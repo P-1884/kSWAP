@@ -135,8 +135,8 @@ class kSWAP(object):
     except sqlite3.OperationalError:
       self.db_exists = True
 
-    Panoptes.connect(username=os.environ["PANOPTES_USERNAME"], \
-                     password=os.environ["PANOPTES_PASSWORD"])
+    Panoptes.connect(username='###', \
+                     password='###')
                      
     self.workflow = Workflow.find(config.workflow)
     

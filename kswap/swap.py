@@ -33,10 +33,11 @@ class Classification(object):
 
   def parse(self, annotation):
     value = annotation[0]['value']
-    if value in self.label_map.keys():
-      return self.label_map[value]
+#    print(type(annotation))
+    if value==[]:
+      return '0'
     else:
-      raise ValueError('Annotation value {} not recognised.'.format(value))
+      return '1'
 
 class User(object):
   def __init__(self,
@@ -65,9 +66,10 @@ class User(object):
       self.user_score[self.classes[i]] = 1 / float(self.k)
 
   def update_confusion_matrix(self, gold_label, label):
+    label=int(label)
     confusion_matrix = self.confusion_matrix
     confusion_matrix['n_gold'][gold_label] += 1
-    if gold_label == label:
+    if str(gold_label) == str(label):
       confusion_matrix['n_seen'][label] += 1
     self.confusion_matrix = confusion_matrix
 
@@ -83,8 +85,7 @@ class User(object):
              / (self.confusion_matrix['n_gold'][1] + 2.0*self.gamma)
     except ZeroDivisionError:
       score1 = self.user_default[self.classes[1]]
-
-    self.user_score = {self.classes[0]: score0, self.classes[1]: score1}
+    self.user_score = {list(self.classes)[0]: score0, list(self.classes)[1]: score1}
 
   def dump(self):
     return (self.user_id,
@@ -112,20 +113,20 @@ class Subject(object):
     self.history = [('_', '_', '_', self.score)]
 
   def update_score(self, label, user):
-    if label == 0:
+    if label == '0':
       self.score = (self.score \
-                 * (1 - user.user_score[self.classes[1]])) \
+                 * (1 - user.user_score[list(self.classes)[1]])) \
                  / (self.score \
-                 * (1 - user.user_score[self.classes[1]]) \
-                 + user.user_score[self.classes[0]] \
+                 * (1 - user.user_score[list(self.classes)[1]]) \
+                 + user.user_score[list(self.classes)[0]] \
                  * (1-self.score) \
                  + self.epsilon)
-    elif label == 1:
+    elif label == '1':
       self.score = (self.score \
-                 * user.user_score[self.classes[1]]) \
+                 * user.user_score[list(self.classes)[1]]) \
                  / (self.score \
-                 * user.user_score[self.classes[1]] \
-                 + (1-user.user_score[self.classes[0]]) \
+                 * user.user_score[list(self.classes)[1]] \
+                 + (1-user.user_score[list(self.classes)[0]]) \
                  * (1-self.score)
                  + self.epsilon)
     
@@ -160,10 +161,10 @@ class SWAP(object):
     except sqlite3.OperationalError:
       self.db_exists = True
 
-    Panoptes.connect(username=os.environ["PANOPTES_USERNAME"], \
-                     password=os.environ["PANOPTES_PASSWORD"])
+    Panoptes.connect(username='###', \
+                     password='###')
                      
-    self.workflow = Workflow.find(config.workflow_id)
+#    self.workflow = Workflow.find(config.workflow_id)
     
   def connect_db(self):
     return sqlite3.connect(self.config.db_path+self.config.db_name, timeout=self.timeout)
@@ -226,7 +227,6 @@ class SWAP(object):
   
     c.execute('SELECT * FROM users')
     swap.load_users(it(c.fetchall()))
-    
     c.execute('SELECT * FROM subjects')
     swap.load_subjects(it(c.fetchall()))
 
@@ -261,7 +261,6 @@ class SWAP(object):
   def save(self):
     conn = self.connect_db()
     c = conn.cursor()
-
     def zip_name(data):
       return [d.values() for d in data]
 
@@ -358,16 +357,17 @@ class SWAP(object):
       reader = csv.DictReader(csvdump)
       for row in reader:
         id = int(row['classification_id'])
-        try:
-          assert int(row['workflow_id']) == self.config.workflow
-          # ignore repeat classifications of the same subject
-          json.loads(row['metadata'])['seen_before']
-          continue
-        except KeyError as e:
-          pass
-        except AssertionError as e:
-          print(e, row)
-          continue
+#Hashing out next try script:
+#        try:
+#          assert int(row['workflow_id']) == self.config.workflow
+#          # ignore repeat classifications of the same subject
+#          json.loads(row['metadata'])['seen_before']
+#          continue
+#        except KeyError as e:
+##          pass
+##       except AssertionError as e:
+#          print(e, row)
+#          continue
         try:
           user_id = int(row['user_id'])
         except ValueError:
@@ -401,7 +401,7 @@ class SWAP(object):
         if item['already_seen']:
           continue
       except KeyError as e:
-        print('KeyError', e)
+#        print('KeyError', e)
         continue
       if id < self.last_id:
         continue
@@ -411,7 +411,7 @@ class SWAP(object):
         user_id = item['user_id']
       subject_id = int(item['subject_ids'])
       object_id = item['object_id']
-      annotation = ujson.loads(item['annotations'])
+      annotation = json.loads(item['annotations'])
       cl = Classification(id, user_id, subject_id, object_id, annotation)
       self.process_classification(cl)
       self.last_id = id
@@ -425,7 +425,7 @@ class SWAP(object):
     try:
       while True:
         haveItems, subject_batch = self.caesar_recieve(ce)
-        print(haveItems, subject_batch)
+#        print(haveItems, subject_batch)
         if haveItems:
           self.save()
           ce.Config.instance().save()
@@ -462,17 +462,17 @@ class SWAP(object):
           user_id = row['user_name']
         subject_id = int(row['subject_ids'])
         annotation = json.loads(row['annotations'])
-        try:
-          assert int(row['workflow_id']) == self.config.workflow
-          # ignore repeat classifications of the same subject
-          if json.loads(row['metadata'])['seen_before']:
-            continue
-        except KeyError as e:
-          print(e, row)
-          pass
-        except AssertionError as e:
-          print(e, row)
-          continue
+#        try:
+#          assert int(row['workflow_id']) == self.config.workflow
+#          # ignore repeat classifications of the same subject
+#          if json.loads(row['metadata'])['seen_before']:
+#            continue
+#        except KeyError as e:
+#          print(e, row)
+#          pass
+#        except AssertionError as e:
+#          print(e, row)
+#          continue
                   
         try:
           cl = Classification(id,
@@ -492,7 +492,7 @@ class SWAP(object):
         
         try:
           gold_label = self.subjects[cl.subject_id].gold_label
-          assert gold_label in (0,1)
+          assert gold_label in (0 ,1)
           self.users[cl.user_id].update_user_score(gold_label, cl.label)
         except AssertionError as e:
           continue
@@ -507,4 +507,3 @@ class SWAP(object):
   def run_online(self, gold_csv, classification_csv):
     self.get_golds(gold_csv)
     self.process_classifications_from_csv_dump(classification_csv, online=True)
-
