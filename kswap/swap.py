@@ -45,14 +45,14 @@ class Classification(object):
 #User Score: Initialsed to [0.5,0.5]
 #History: Initialised to [(_, [0.5,0.5])] ie [(subject_id, user_score)].
 
-#update_confusion_matrix: Adds 1 to 'N_gold' category for the subject (ie Not-gold, NL, L). If correctly identified, adds 1 to 'N_seen' category for the subject.
+#update_confusion_matrix: Adds 1 to 'N_gold' category for the subject (ie NL, L). If correctly identified, adds 1 to 'N_seen' category for the subject.
 #Note, names are a misnomer, N_gold really means 'Number of each category seen', and N_seen really means 'Number of each category correctly identified'. 
-#Note: Cant update confusion matrix for non-gold subjects.
-#Note to self - golds are labelled 0 or 1 within csv. Not-golds aren't included.
+#Note: Cant update confusion matrix for non-gold subjects - golds are labelled 0 or 1 within csv. Not-golds aren't included.
 
 #update_user_score: First updates the confusion matrix (above). Then updates scores for NL and L via: (1+N_category_correct_identified)/(2+N_category_seen).
 #Note Cant update user score for non-gold subjects.
 
+#dump: returns user_id, then jsons of user score, confusion matrix and history for that user.
 class User(object):
   def __init__(self,
                user_id,
@@ -107,6 +107,20 @@ class User(object):
             json.dumps(self.confusion_matrix),
             json.dumps(self.history))
 
+#Subject Class:
+#Arguments: Subject_ID, p0 (ie initial probability), classes (0,1) , gold-label (default= -1 ie not test), k (ie N. classes), retired (=False).
+#Retired: Initialised to False
+#History: Initialised as [_,_,_,p0] ie (user_id, user_score, label, subject_score)
+#Seen: Initialised to 0
+
+#update_score: Updates subject scores, increases seen by 1 and appends (user_id, user_score, label, subject_score) to history.
+#Defining u_l and u_NL as user scores for L/NL classification):
+#If labelled NL:
+#Score =score*(1-u_L)/[score*(1-u_L)+u_NL*(1-score)]
+#If labelled L:
+#Score = score*u_L/[score*u_L+(1-u_NL)*(1-score)
+
+#dump: Returns subject_id, gold_label, retired status/classification, seen, then jsons of history and score.
 class Subject(object):
   def __init__(self,
                subject_id,
@@ -156,6 +170,11 @@ class Subject(object):
             self.seen, \
             json.dumps(self.history))
 
+#Initialises dictionaries for users, subjects, objects (?), config etc. Creates database:
+#users (feat: user_id, user_score, confusion_matrix and history),
+#subjects(feat: subject_id, gold_label, score, retired status/classification, seen and history)
+#thresholds (feat: thresholds)
+#config (feat: id (?), user_default, workflow, p0, gamma, retirement limit, path to database, database name, timeout, last_id and seen).
 class SWAP(object):
   def __init__(self,
                config=None,
@@ -198,7 +217,7 @@ class SWAP(object):
                  'db_name, timeout, last_id, seen)')
 
     conn.close()
-
+#For all the users in the user dictionary: 1) Loads their scores, 2) Sets all of them to be members of the User class, with their respective values for history etc.
   def load_users(self, users):
     for user in users:
       user_score = json.loads(user['user_score'])
@@ -208,7 +227,7 @@ class SWAP(object):
                                          user_default=user_score)
       self.users[user['user_id']].confusion_matrix = json.loads(user['confusion_matrix'])
       self.users[user['user_id']].history = json.loads(user['history'])
-
+#As above, but for all subjects in the subject dictionary.
   def load_subjects(self, subjects):
     for subject in subjects:
       self.subjects[subject['subject_id']] = Subject(subject_id=subject['subject_id'],
@@ -221,6 +240,7 @@ class SWAP(object):
       self.subjects[subject['subject_id']].seen = subject['seen']
       self.subjects[subject['subject_id']].history = json.loads(subject['history'])
 
+#Fetches all the data from the databases made above, then makes them members of the users/subjects classes.
   def load(self):
     def it(rows):
       for item in rows:
@@ -247,31 +267,31 @@ class SWAP(object):
     conn.close()
 
     return swap
-
+#Appends all the users to a list then returns
   def dump_users(self):
     users = []
     for u in self.users.keys():
       users.append(self.users[u].dump())
     return users
-
+#As above for subjects
   def dump_subjects(self):
     subjects = []
     for s in self.subjects.keys():
       subjects.append(self.subjects[s].dump())
     return subjects
-  
+#As above for objects
   def dump_objects(self):
     objects = []
     for o in self.objects.keys():
       objects.append(self.objects[o].dump())
     return objects
-
+#As above for the config data.
   def dump_config(self):
     return (0, json.dumps(self.config.user_default), self.config.workflow,
             self.config.p0, self.config.gamma, self.config.retirement_limit,
             self.config.db_path, self.config.db_name, self.timeout,
             self.last_id, json.dumps(list(self.seen)))
-              
+#Adds data into databases.
   def save(self):
     conn = self.connect_db()
     c = conn.cursor()
@@ -289,7 +309,8 @@ class SWAP(object):
     
     conn.commit()
     conn.close()
-
+#Checks if classification is new (if not, function does nothing), if the user is new (if so, makes them a member of User class), if subject is new (if so, makes them a member of Subject class).
+#Then: Updates subject score due to this classification. If subject is a gold and swap being run in online mode, it also updates user score and adds it to user history.
   def process_classification(self, cl, online=False):
     # check if classification already seen
     if cl.id <= self.last_id:
@@ -319,7 +340,8 @@ class SWAP(object):
     self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score))
     self.last_id = cl.id
     self.seen.add(cl.id)
-    
+
+#Takes as an input a list of subjects. If a subject is gold, it is not retired, otherwise if its score is past either threshold it is added to the to_retire list and marked as '0' or '1' depending on which threshold it passed.
   def retire(self, subject_batch):
     to_retire = []
     for subject_id in subject_batch:
@@ -340,7 +362,8 @@ class SWAP(object):
         subject.retired_as = 1
         to_retire.append(subject_id)
     return to_retire
-    
+
+#Takes as an input a list of subjects. If the subject is beyond the retirement limit (ie too many classifications), it is retired, with classification *based on the majority vote of its previous classifications, not a rounded version of its current score*.
   def retire_classification_count(self, subject_batch):
   
     def majority_vote(sequence):
@@ -360,12 +383,14 @@ class SWAP(object):
         to_retire.append(subject_id)
     return to_retire
 
+#Sends the subjects to be retired to panoptes.
   def send_panoptes(self, subject_batch):
     subjects = []
     for subject_id in subject_batch:
       subjects.append(PanoptesSubject().find(subject_id))
     self.workflow.retire_subjects(subjects)
 
+#Goes through each row in the csv, defining classification events, updating scores (as per process_classification) and labelling subjects to be retired if required.
   def process_classifications_from_csv_dump(self, path, online=False):
     with open(path, 'r') as csvdump:
       reader = csv.DictReader(csvdump)
@@ -401,7 +426,7 @@ class SWAP(object):
       self.retire(self.subjects.keys())
     except TypeError:
       self.retire_classification_count(self.subjects.keys())
-
+#Recieves data from caesar, adds classification events/updating scores (as per process_classification), but doesnt set any to be retired.
   def caesar_recieve(self, ce):
     data = ce.Extractor.next()
     haveItems = False
@@ -433,7 +458,8 @@ class SWAP(object):
       subject_batch.append(subject_id)
     self.logger.write(str(subject_batch)+'\n')
     return haveItems, subject_batch
-    
+
+#? Not sure what this does?
   def process_classifications_from_caesar(self, caesar_config_name):
     ce.Config.load(caesar_config_name)
     try:
@@ -454,6 +480,7 @@ class SWAP(object):
       self.logger.write('Terminating SWAP instance.\n')
       exit()
 
+#Adds gold subjects from the csv to Subject class.
   def get_golds(self, path):
     with open(path,'r') as csvdump:
       reader = csv.DictReader(csvdump)
@@ -465,6 +492,7 @@ class SWAP(object):
                                             p0 = self.config.p0,
                                             gold_label = gold_label)
 
+#Goes through the csv file, if subject is a gold, updates the user-score accordingly.
   def apply_golds(self, path):
     with open(path, 'r') as csvdump:
       reader = csv.DictReader(csvdump)
@@ -513,11 +541,13 @@ class SWAP(object):
         except KeyError as e:
           continue
 
+#Run offline
   def run_offline(self, gold_csv, classification_csv):
     self.get_golds(gold_csv)
     self.apply_golds(classification_csv)
     self.process_classifications_from_csv_dump(classification_csv)
 
+#Run Online (misses out on apply_golds but user-scores are updated within process_classification function for online mode.)
   def run_online(self, gold_csv, classification_csv):
     self.get_golds(gold_csv)
     self.process_classifications_from_csv_dump(classification_csv, online=True)
