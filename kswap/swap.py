@@ -39,6 +39,20 @@ class Classification(object):
     else:
       return '1'
 
+#User Class:
+#Arguments; User_ID, Classes (0,1), Gamma (1), User_default (ie default score), k (ie N. classes).
+#Confusion matrix: Initialised to {N_seen: [0,0], N_gold: [0,0]}
+#User Score: Initialsed to [0.5,0.5]
+#History: Initialised to [(_, [0.5,0.5])] ie [(subject_id, user_score)].
+
+#update_confusion_matrix: Adds 1 to 'N_gold' category for the subject (ie Not-gold, NL, L). If correctly identified, adds 1 to 'N_seen' category for the subject.
+#Note, names are a misnomer, N_gold really means 'Number of each category seen', and N_seen really means 'Number of each category correctly identified'. 
+#Note: Cant update confusion matrix for non-gold subjects.
+#Note to self - golds are labelled 0 or 1 within csv. Not-golds aren't included.
+
+#update_user_score: First updates the confusion matrix (above). Then updates scores for NL and L via: (1+N_category_correct_identified)/(2+N_category_seen).
+#Note Cant update user score for non-gold subjects.
+
 class User(object):
   def __init__(self,
                user_id,
