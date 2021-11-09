@@ -19,7 +19,7 @@ def test_initialise():
 
 #Loads data from databases, get/apply golds then processes classification from csv then updates the databases.
 def test_offline():
-  from offline_config import Config
+  from config import Config
   swap = SWAP(config=Config())
   swap = swap.load() #ie any previous user/subject details (otherwise gives default values to user/subject).
   swap.run_offline('./data/golds.csv',
@@ -31,7 +31,7 @@ def test_offline():
 
 #Loads data from databases, gets golds, then applies golds/updates scores simultaneously.
 def test_online():
-  from online_config import Config
+  from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
   swap.run_online('./data/golds.csv',

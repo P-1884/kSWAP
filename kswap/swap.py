@@ -13,7 +13,10 @@ try:
     import caesar_external as ce
 except ModuleNotFoundError:
     pass
-    
+
+#Classification Class:
+#Arguments: Classification_id, User_id, Subject_id, Annotation, Label_map
+#For the time-being, if annotations is not '[]', classifies as a lens, if not, classifies as not-a-lens.
 class Classification(object):
   def __init__(self,
                id,

@@ -19,7 +19,7 @@ def read_sqlite(dbfile):
       out = {tbl : read_sql_query(f"SELECT * from {tbl}", dbcon) for tbl in tables}
     return out
 
-def trajectory_plot(path='./data/online_swap.db', subjects=200, logy=True):
+def trajectory_plot(path='./data/swap.db', subjects=200, logy=True):
     import pandas as pd
     import matplotlib.patches as mpatches
     import matplotlib.pyplot as plt
