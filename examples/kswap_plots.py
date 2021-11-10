@@ -3,13 +3,16 @@ Adapted from https://github.com/drphilmarshall/SpaceWarps with minor adjustments
 
 """
 def thresholds_setting():
-#    p_real = 0.95
-#    p_bogus = 1.e-7
-    p_real = 0.95
-    p_bogus = 1e-7
+    import sys
+    from config import Config as config_thresholds
+    sys.path.insert(0, '../kswap')
+    p_real = config_thresholds().thresholds[1]
+    p_bogus = config_thresholds().thresholds[0]
     return [p_real,p_bogus]
+    
 def prior_setting():
-    return 5.e-4
+    from config import Config as config_thresholds
+    return config_thresholds().p0
 
 def read_sqlite(dbfile):
     import sqlite3

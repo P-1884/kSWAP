@@ -15,5 +15,5 @@ class Config(object):
     self.classes = ['0', '1']
     self.p0 = 5.e-4
     self.gamma = 1
-    self.thresholds = (0.01, 0.9)
+    self.thresholds = (1.e-7, 0.95)
     self.retirement_limit = 10
