@@ -18,6 +18,7 @@ class Config(object):
     self.retirement_limit = 2
 #File Paths:
     self.tuples_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data'
+    self.retired_items_path='/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/retired_list'
     self.golds_path= './data/des_temp_golds_2.csv'
     self.kswap_path='/Users/hollowayp/Documents/GitHub/kSWAP/kswap'
     #There is an additional path (on line 2 of kswap_plots.py) which needs to be updated to the location of the config file (found at '...kSWAP/kswap/config.py')

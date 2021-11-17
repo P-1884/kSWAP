@@ -403,28 +403,29 @@ class SWAP(object):
       subjects.append(PanoptesSubject().find(subject_id))
     self.workflow.retire_subjects(subjects,reason=reason)
 
-  def make_tuples_list(self):
+  def retrieve_list(self,list_path):
     import pandas as pd
-    tuples_path = self.config.tuples_path
     try:
-        df = pd.read_csv(tuples_path)
-        tuples = []
+        df = pd.read_csv(list_path)
+        list_total = []
         for row in df.iterrows():
-            tuples_i = eval(row[1]['tuples'])
-            tuples.append(tuples_i)
-        return tuples
+            try:
+              list_i = eval(row[1]['list items'])
+            except:
+              list_i=row[1]['list items']
+            list_total.append(list_i)
+        return list_total
     except FileNotFoundError:
         return []
 
-  def save_tuples_list(self,tuples_list):
+  def save_list(self,list_total,list_path):
     import pandas as pd
-    tuples_path = self.config.tuples_path
-    tuples_db = pd.DataFrame({'tuples': tuples_list})
-    tuples_db.to_csv(tuples_path, index=False)
+    list_db = pd.DataFrame({'list items': list_total})
+    list_db.to_csv(list_path, index=False)
 
 #Goes through each row in the csv, defining classification events, updating scores (as per process_classification) and labelling subjects to be retired if required.
   def process_classifications_from_csv_dump(self, path, online=False):
-    tuples_list = self.make_tuples_list()
+    tuples_list = self.retrieve_list(self.config.tuples_path)
     with open(path, 'r') as csvdump:
       reader = csv.DictReader(csvdump)
       for row in reader:
@@ -457,16 +458,26 @@ class SWAP(object):
           except ValueError:
             continue
           self.process_classification(cl, online)
-    self.save_tuples_list(tuples_list)
+    self.save_list(tuples_list,self.config.tuples_path)
+#***Why is there an try/except function here? Surely need to do both simultaneously?***
+#Original:
     try:
       self.retire(self.subjects.keys())
     except TypeError:
       self.retire_classification_count(self.subjects.keys())
+###Suggested update:
+#    retired_list=retrieve_list(self.config.retired_items_path)
+#    retired_list_threshold_updates=self.retire(self.subjects.keys())
+#    retired_list_Nclass_updates=self.retire_classification_count(self.subjects.keys())
+#    self.send_panoptes(retired_list_threshold_updates,'consensus')
+#    self.send_panoptes(retired_list_Nclass_updates,'classification count')
+#    retired_list.extend(list(set(np.array(retired_list_threshold_updates+retired_list_Nclass_updates))))
+#    self.save_list(retired_list,self.config.retired_items_path)
 
 #Recieves data from caesar, adds classification events/updating scores (as per process_classification), but doesnt set any to be retired.
   def caesar_recieve(self, ce):
     import logging
-    tuples_list = self.make_tuples_list()
+    tuples_list = self.retrieve_list(self.config.tuples_path)
     logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
     data = ce.Extractor.next()
     haveItems = False
@@ -505,7 +516,7 @@ class SWAP(object):
           self.last_id = id
           self.seen.add(id)
           subject_batch.append(subject_id)
-    self.save_tuples_list(tuples_list)
+    self.save_list(tuples_list,self.config.tuples_path)
     return haveItems, subject_batch
 
   def process_classifications_from_caesar(self, caesar_config_name):
@@ -513,34 +524,54 @@ class SWAP(object):
     import numpy as np
     ce.Config.load(caesar_config_name)
     q=0
+    k=0
     retire_list_thres=[]
     retire_list_Nclass=[]
     try:
-      while True:
+      while k<3:
         haveItems, subject_batch = self.caesar_recieve(ce)
         if haveItems:
+          k=0
           self.save()
           ce.Config.instance().save()
           # load the just saved ce config
           ce.Config.load(caesar_config_name)
 #          self.send(ce, subject_batch)
-        print('breaking')
+        else:
+          k+=1
+          print('k = ' + str(k))
         retire_list_thres.extend(self.retire(subject_batch))
         retire_list_Nclass.extend(self.retire_classification_count(subject_batch))
-        logging.info('To retire' + str((np.array(retire_list_thres+retire_list_Nclass))))
+        logging.info('Will be retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
     except KeyboardInterrupt as e:
+###Retirements:
       retire_list_thres.extend(self.retire(subject_batch))
       retire_list_Nclass.extend(self.retire_classification_count(subject_batch))
+      logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
+      logging.info('To retire: ' + str(set(np.array(retire_list_thres+retire_list_Nclass))))
+      retired_list = self.retrieve_list(self.config.retired_items_path)
+      retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+      self.save_list(retired_list,self.config.retired_items_path)
+      self.send_panoptes(retire_list_thres,'human')
       self.send_panoptes(retire_list_Nclass,'human')
 #      self.send_panoptes(retire_list_thres,'consensus')
 #      self.send_panoptes(retire_list_Nclass,'classification_count')
-      logging.info('Retiring ' + str(len(np.array(retire_list_thres+retire_list_Nclass)))+ ' subjects')
+
       print('Received KeyboardInterrupt {}'.format(e))
       self.save()
       print('Terminating SWAP instance.')
       exit()
-#    send_panoptes(retire_list_thres,'consensus')
-#    send_panoptes(retire_list_Nclass,'classification_count')
+
+###Retirements:
+    logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
+    logging.info('To retire: ' + str(set(np.array(retire_list_thres+retire_list_Nclass))))
+    retired_list = self.retrieve_list(self.config.retired_items_path)
+    retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+    self.save_list(retired_list,self.config.retired_items_path)
+    self.send_panoptes(retire_list_thres,'human')
+    self.send_panoptes(retire_list_Nclass,'human')
+#    self.send_panoptes(retire_list_thres,'consensus')
+#    self.send_panoptes(retire_list_Nclass,'classification_count')
 
 #Adds gold subjects from the csv to Subject class.
   def get_golds(self, path):
@@ -618,13 +649,11 @@ class SWAP(object):
   def run_caesar(self,gold_csv):
     self.get_golds(gold_csv)
     self.process_classifications_from_caesar('test_config2')
-#     print(self.workflow.subject_workflow_status(37775519).retirement_reason)
-#     self.send_panoptes([37775519],'Test Retirement')
-#     print(self.workflow.subject_workflow_status(37775519).retirement_reason)
-#     self.workflow.unretire_subjects(37775586)
-#     print(self.workflow.subject_workflow_status(37775586).retirement_reason)
-#     self.send_panoptes([37775586],'human')
-#     a = [37775637, 37775636, 37775636, 37775633, 37775628, 37775623, 37775620, 37775629]
+#    a = [37775620, 37775623, 37775628, 37775629, 37775633, 37775636, 37775637,37775619, 37775630]
+#    for i in range(len(a)):
+#      self.workflow.unretire_subjects(a[i])
+#     a = [37775620, 37775623, 37775628, 37775629, 37775633, 37775636, 37775637]
 #     for i in range(len(a)):
 #        print(self.workflow.subject_workflow_status(a[i]).retirement_reason)
 #        self.workflow.unretire_subjects(a[i])
+
