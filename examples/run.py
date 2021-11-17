@@ -45,7 +45,7 @@ def test_caesar():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_caesar('./data/des_temp_golds_2.csv')
+  swap.run_caesar(Config().golds_path)
   del swap
   swap = SWAP(config=Config())
   swap = swap.load()
