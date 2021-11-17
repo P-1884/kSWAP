@@ -34,9 +34,18 @@ def test_online():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_online('./data/golds.csv',
-                  './data/swhsc-6605-classification_060518_0317.csv')
+  swap.run_online('./data/des_temp_golds.csv',
+                  './data/classification_csv.csv')
   swap.save()
+  del swap
+  swap = SWAP(config=Config())
+  swap = swap.load()
+
+def test_caesar():
+  from config import Config
+  swap = SWAP(config=Config())
+  swap = swap.load()
+  swap.run_caesar('./data/des_temp_golds_2.csv')
   del swap
   swap = SWAP(config=Config())
   swap = swap.load()
@@ -54,9 +63,9 @@ def compare_offline_and_online_user_scores(user_id):
   online_swap = online_swap.load()
   online_user = online_swap.users[user_id]
 
-  print(len(offline_user.history), len(online_user.history))
-  print(offline_user.confusion_matrix, online_user.confusion_matrix)
-  print(offline_user.user_score, online_user.user_score)
+  #print(len(offline_user.history), len(online_user.history))
+  #print(offline_user.confusion_matrix, online_user.confusion_matrix)
+  #print(offline_user.user_score, online_user.user_score)
   assert len(offline_user.history) == len(online_user.history)
   plt.plot(range(len(offline_user.history)),
            [h[1]['1'] for h in offline_user.history],
@@ -91,7 +100,8 @@ def main():
 #  print('2: Offline')
 #  test_offline()
   print('3: Online')
-  test_online()
+#  test_online()
+  test_caesar()
 #  print('4: Compare')
 #  compare_offline_and_online_user_scores(user_id=1517738)
 

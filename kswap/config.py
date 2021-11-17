@@ -1,9 +1,8 @@
 class Config(object):
   def __init__(self):
     # panoptes
-    self.project = 0
-    self.workflow = 0
-
+    self.project = 6968
+    self.workflow = 8878
     # data paths
     self.swap_path = './'
     self.data_path = self.swap_path+'/data/'
@@ -16,4 +15,4 @@ class Config(object):
     self.p0 = 5.e-4
     self.gamma = 1
     self.thresholds = (1.e-7, 0.95)
-    self.retirement_limit = 10
+    self.retirement_limit = 2
