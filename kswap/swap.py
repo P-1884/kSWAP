@@ -4,6 +4,7 @@ import json
 import sqlite3
 import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
+from config import Config
 
 from collections import Counter
 
@@ -16,6 +17,7 @@ try:
 except ModuleNotFoundError:
     pass
 
+#**See note line 459**
 #Classification Class:
 #Arguments: Classification_id, User_id, Subject_id, Annotation, Label_map
 #For the time-being, if annotations is not '[]', classifies as a lens, if not, classifies as not-a-lens.
@@ -403,7 +405,7 @@ class SWAP(object):
 
   def make_tuples_list(self):
     import pandas as pd
-    tuples_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data'
+    tuples_path = self.config.tuples_path
     try:
         df = pd.read_csv(tuples_path)
         tuples = []
@@ -416,7 +418,7 @@ class SWAP(object):
 
   def save_tuples_list(self,tuples_list):
     import pandas as pd
-    tuples_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data'
+    tuples_path = self.config.tuples_path
     tuples_db = pd.DataFrame({'tuples': tuples_list})
     tuples_db.to_csv(tuples_path, index=False)
 
