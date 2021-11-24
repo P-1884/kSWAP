@@ -46,6 +46,7 @@ def test_caesar():
   swap = SWAP(config=Config())
   swap = swap.load()
   swap.run_caesar(Config().golds_path)
+  swap.save()
   del swap
   swap = SWAP(config=Config())
   swap = swap.load()
