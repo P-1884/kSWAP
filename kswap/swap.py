@@ -1,13 +1,15 @@
 import os
 import csv
+import numpy as np
 import json
 import sqlite3
 import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 from config import Config
-
+import time
 from collections import Counter
-
+from datetime import datetime
+import random
 from panoptes_client import Panoptes, Workflow
 from panoptes_client import Subject as PanoptesSubject
 from panoptes_client.panoptes import PanoptesAPIException
@@ -16,7 +18,7 @@ try:
     import caesar_external as ce
 except ModuleNotFoundError:
     pass
-
+import time
 #**See note line 459**
 #Classification Class:
 #Arguments: Classification_id, User_id, Subject_id, Annotation, Label_map
@@ -39,11 +41,15 @@ class Classification(object):
     self.label = self.parse(annotation)
 
   def parse(self, annotation):
-    value = annotation['T1'][0]['value']
+#    value = annotation['T1'][0]['value']
+    try:
+        value = annotation['T1'][0]['value']
+#NEED TO CHECK THIS IN DETAIL - NEED THE 'EXCEPT' FOR CLASSIFICATIONS FROM CSV - NEED TO CHECK IS USING CORRECT VALUE & ANNOTATION NOT JUST EG THE INITIAL ONE IN A LIST.
+    except:
+        value = annotation[0]['value']
     if value==[]:
       return '0'
     else:
-      logging.info(annotation)
       return '1'
 
 #User Class:
@@ -76,7 +82,7 @@ class User(object):
     else:
       self.initialise_user_score()
     self.initialise_confusion_matrix()
-    self.history = [('_', self.user_score)]
+    self.history = [('_', self.user_score,'_')]
   
   def initialise_confusion_matrix(self):
       self.confusion_matrix = {'n_seen': [0]*self.k, 'n_gold': [0]*self.k}
@@ -145,9 +151,9 @@ class Subject(object):
     self.retired = False
     self.retired_as = None
     self.seen = 0
-    self.history = [('_', '_', '_', self.score)]
+    self.history = [('_', '_', '_', self.score,'_')]
 
-  def update_score(self, label, user):
+  def update_score(self, label, user,time_stamp):
     if label == '0':
       self.score=float(self.score)
       self.score = ((self.score) \
@@ -166,7 +172,7 @@ class Subject(object):
                  + (1-user.user_score[list(self.classes)[0]]) \
                  * (1-self.score)
                  + self.epsilon)
-    self.history.append((user.user_id, user.user_score, label, self.score))
+    self.history.append((user.user_id, user.user_score, label, self.score,time_stamp))
     self.seen += 1
 
   def dump(self):
@@ -194,7 +200,7 @@ class SWAP(object):
     self.config=config
     self.last_id = 0
 #DELETE THE NEXT LINE - JUST THERE TO CHECK RETIREMENTS ARE WORKING. IN THIS LINE, ID=WORKFLOW ID
-    self.id=self.config.workflow
+#    self.id=self.config.workflow
     self.seen = set([])
     self.db_exists = False
     self.timeout = timeout # wait x seconds to acquire db connection
@@ -204,8 +210,9 @@ class SWAP(object):
     except sqlite3.OperationalError:
       self.db_exists = True
 
-    Panoptes.connect(username='###', \
-                     password='###')
+#NEED TO ADD THESE IN:
+    Panoptes.connect(username='USERNAME', \
+                     password='PASSWORD')
                      
     self.workflow = Workflow.find(config.workflow)
     
@@ -247,6 +254,7 @@ class SWAP(object):
       self.subjects[subject['subject_id']].gold_label = subject['gold_label']
       self.subjects[subject['subject_id']].retired = subject['retired']
       self.subjects[subject['subject_id']].retired_as = subject['retired_as']
+      print('loading subjects'+str(subject['retired_as']))
       self.subjects[subject['subject_id']].seen = subject['seen']
       self.subjects[subject['subject_id']].history = json.loads(subject['history'])
 
@@ -324,6 +332,7 @@ class SWAP(object):
 #Then: Updates subject score due to this classification. If subject is a gold and swap being run in online mode, it also updates user score and adds it to user history.
   def process_classification(self, cl, online=False):
     # check user is known
+    time_stamp = time.time()
     try:
       self.users[cl.user_id]
     except KeyError:
@@ -338,11 +347,11 @@ class SWAP(object):
       self.subjects[cl.subject_id] = Subject(subject_id = cl.subject_id,
                                              p0 = self.config.p0,
                                              classes = self.config.label_map.keys())
-    self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id])
+    self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id],time_stamp)
     if self.subjects[cl.subject_id].gold_label in (0,1) and online:
       gold_label = self.subjects[cl.subject_id].gold_label
       self.users[cl.user_id].update_user_score(gold_label, cl.label)
-    self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score))
+    self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score,time_stamp))
     self.last_id = cl.id
     self.seen.add(cl.id)
 
@@ -356,12 +365,16 @@ class SWAP(object):
         print('B: Subject {} is missing.'.format(subject_id))
         continue
       if subject.gold_label in (0,1):
+        print('continuing as gold')
 # if this is a gold standard image never retire
         continue
       subject.score=float(subject.score)
-      if subject.score < self.config.thresholds[0]:
+      if (subject.score < self.config.thresholds[0]) and subject.seen>self.config.lower_retirement_limit:
+        if subject.gold_label !=-1:
+          print('NOT CONTINUING!!'+str(type(subject.gold_label)))
         subject.retired = True
         self.subjects[subject_id].retired=True
+        print('setting retired_as to 0')
         subject.retired_as = 0
         to_retire.append(subject_id)
         logging.info('retired as reached lower threshold')
@@ -389,8 +402,8 @@ class SWAP(object):
       if subject.seen >= self.config.retirement_limit and subject.gold_label==-1:
         subject.retired = True
         self.subjects[subject_id].retired=True
-        subject.retired_as = majority_vote([h[2] for h in subject.history])
-        logging.info('retired as reached retirement limit')
+        subject.retired_as = majority_vote([h[2] for h in subject.history[1:len(subject.history)]])
+        logging.info('retired as reached retirement limit: '+ str(subject.retired_as))
         to_retire.append(subject_id)
     return to_retire
 
@@ -423,7 +436,8 @@ class SWAP(object):
 
 #Goes through each row in the csv, defining classification events, updating scores (as per process_classification) and labelling subjects to be retired if required.
   def process_classifications_from_csv_dump(self, path, online=False):
-    tuples_list = self.retrieve_list(self.config.tuples_path)
+#    retired_list = self.retrieve_list(self.config.retired_items_path)
+#    tuples_list = self.retrieve_list(self.config.tuples_path)
     with open(path, 'r') as csvdump:
       reader = csv.DictReader(csvdump)
       for row in reader:
@@ -436,12 +450,16 @@ class SWAP(object):
           user_id = int(row['user_id'])
         except ValueError:
           user_id = row['user_name']
+        dt_row = row['created_at']
         subject_id = int(row['subject_ids'])
         annotation = json.loads(row['annotations'])
+        #NEED TO CHANGE THIS BACK FOR DES - FIXED:
+        already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
+#        already_seen_i=False
 #NEED TO ADD THIS LINE IN AGAIN
 #        if (subject_id,user_id) not in tuples_list:
-        if 1!=0:
-          tuples_list.append((subject_id,user_id))
+#          tuples_list.append((subject_id,user_id))
+        if already_seen_i==False:
           try:
               cl = Classification(id,
                                   user_id,
@@ -452,16 +470,14 @@ class SWAP(object):
             continue
           self.process_classification(cl, online)
         else:
-          print('duplicate classification')
-        if (subject_id,user_id) in tuples_list:
-          print('duplicate classification')
-    self.save_list(tuples_list,self.config.tuples_path)
+          print('duplicate classification' + str((subject_id,user_id)))
+#    self.save_list(tuples_list,self.config.tuples_path)
 #***Why is there an try/except function here? Surely need to do both simultaneously?***
 #Original:
-    try:
-      self.retire(self.subjects.keys())
-    except TypeError:
-      self.retire_classification_count(self.subjects.keys())
+#    try:
+#      self.retire(self.subjects.keys())
+#    except TypeError:
+#      self.retire_classification_count(self.subjects.keys())
 ###Suggested update:
 #    retired_list=retrieve_list(self.config.retired_items_path)
 #    retired_list_threshold_updates=self.retire(self.subjects.keys())
@@ -471,27 +487,96 @@ class SWAP(object):
 #    retired_list.extend(list(set(np.array(retired_list_threshold_updates+retired_list_Nclass_updates))))
 #    self.save_list(retired_list,self.config.retired_items_path)
 
+  def classify_rows(self,row_list,online):
+          random.shuffle(row_list)
+          for r in range(len(row_list)):
+            row_i = row_list[r]
+            id = int(row_i['classification_id'])
+#            assert int(row_i['workflow_id']) == self.config.workflow
+            try:
+              user_id = int(row_i['user_id'])
+            except ValueError:
+              user_id = row_i['user_name']
+            subject_id = int(row_i['subject_ids'])
+            annotation = json.loads(row_i['annotations'])
+            #NEED TO CHANGE THIS BACK FOR DES - FIXED:
+            already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
+#            already_seen_i=False
+            if already_seen_i==False:
+              cl = Classification(id,
+                  user_id,
+                  subject_id,
+                  annotation,
+                  label_map=self.config.label_map)
+              self.process_classification(cl, online)
+            else:
+              print('duplicate classification' + str((subject_id,user_id)))
+
+#Returns a timestamp for the time the classification was made
+  def date_time_convert(self, row_created_at):
+      s_i=[]
+      for s in range(len(row_created_at)):
+        if row_created_at[s]=='-' or row_created_at[s]==':':
+          s_i.append(s)
+      dt_i = datetime(int(row_created_at[0:s_i[0]]), int(row_created_at[s_i[0]+1:s_i[1]]), int(row_created_at[s_i[1]+1:s_i[1]+3]),int(row_created_at[s_i[2]-2:s_i[2]]), int(row_created_at[s_i[2]+1:s_i[3]])).timestamp()
+      return dt_i
+
+  def process_classifications_from_shuffled_csv(self, path, online=False):
+    with open(path, 'r') as csvdump:
+      reader = csv.DictReader(csvdump)
+      q='initialise'
+      row_list=[]
+      for row in reader:
+        if q=='continue':
+          dt_i = self.date_time_convert(row['created_at'])
+          if dt_i<dt_0+18000:
+            row_list.append(row)
+          else:
+            self.classify_rows(row_list,online)
+            row_list=[]
+            dt_0 = self.date_time_convert(row['created_at'])
+            row_list.append(row)
+#NOTE THIS IF STATEMENT MUST GO LAST:
+        if q=='initialise':
+          dt_0 = self.date_time_convert(row['created_at'])
+          row_list.append(row)
+          q='continue'
+        if q =='unaltered':
+          self.classify_rows([row],online)
+      self.classify_rows(row_list,online)
 #Recieves data from caesar, adds classification events/updating scores (as per process_classification), but doesnt set any to be retired.
   def caesar_recieve(self, ce):
     import logging
     import time
-    tuples_list = self.retrieve_list(self.config.tuples_path)
+#    tuples_list = self.retrieve_list(self.config.tuples_path)
+#    retired_list = self.retrieve_list(self.config.retired_items_path)
     logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
     data = ce.Extractor.next()
     haveItems = False
     subject_batch = []
-    q=0
+    q=0;q_all=0
     st=time.time()
     for i, item in enumerate(data):
-      q+=1
+      q_all+=1
       haveItems = True
       id = int(item['id'])
-
+      already_seen_i=item['already_seen']
       try:
         user_id = int(item['user'])
       except ValueError:
         user_id = item['user']
       subject_id = int(item['subject'])
+      subject_i = self.subjects[subject_id]
+      print('')
+      print('Gold status: ' + str(subject_i.gold_label))
+      print('Previous Panoptes Retirement Reason: '+ str(self.workflow.subject_workflow_status(subject_id).retirement_reason))
+      print('Previous Database Status: ' + str(bool(subject_i.retired)))
+      if subject_i.retired==True:
+        print('Previous Database Retirement Classification: ' + str(subject_i.retired_as)+ ' vs gl: ' + str(subject_i.gold_label))
+      else:
+        print('Previous Database Retirement Classification: ' + str(subject_i.retired_as))
+      print('Subject Score: '+str(subject_i.score))
+      print('')
       try:
         assert self.workflow.subject_workflow_status([subject_id]).retirement_reason == None
       except:
@@ -499,84 +584,106 @@ class SWAP(object):
 #      object_id = item['object_id']
 #NEED TO CHECK THESE ANNOTATIONS ARE THE SAME TYPE AS ABOVE
       annotation = item['annotations']
-      if (subject_id,user_id) in tuples_list:
-        print('duplicate classification ' + str(subject_id))
-#NEED TO ADD THIS LINE IN AGAIN:
-#      if (subject_id,user_id) not in tuples_list:
-      if 1!=0:
-          tuples_list.append((subject_id,user_id))
+      if already_seen_i==True:
+        print(str(user_id) + ' has already seen this subject: '+ str(subject_id))
+#      if (subject_id,user_id) not in tuples_list and subject_id not in retired_list:
+#CHECK THIS IF STATEMENT BELOW IS CORRECT BEFORE RUNNING:
+      if already_seen_i==False:
+#      if True:
+          q+=1
+#          tuples_list.append((subject_id,user_id))
           cl = Classification(id, user_id, subject_id, annotation,label_map=self.config.label_map)
           self.process_classification(cl,online=True)
           #^Adds users to User, subjects to Subjects and updates scores/history's accordingly.
           self.last_id = id
           self.seen.add(id)
           subject_batch.append(subject_id)
-      else:
-        print('duplicate classification')
     et=time.time()
+    if q!=q_all:
+        logging.info(str(q_all-q) + ' already_seen subjects ignored')
     if q!=0:
         logging.info('time taken = ' + str(et-st)+ ' for ' + str(q) + ' classifications, ' + str((et-st)/q) + 's/cl')
     else:
         logging.info('time taken = ' + str(et-st)+ ' for ' + str(q) + ' classifications.')
-    self.save_list(tuples_list,self.config.tuples_path)
-    return haveItems, subject_batch
+#    self.save_list(tuples_list,self.config.tuples_path)
+    return haveItems, subject_batch,q,q_all
 
   def process_classifications_from_caesar(self, caesar_config_name):
-    import logging
-    import numpy as np
     ce.Config.load(caesar_config_name)
+    with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'r') as f:
+        aws_list=eval(f.read())
     q=0
     k=0
-    retire_list_thres=[]
-    retire_list_Nclass=[]
+    print('README:')
+    print('Notes: 1) Need to rename/refresh swap.db database when run beta test')
+    print('       2) Need to make sure the subjects are all unretired before starting (they are all at the bottom of this file in the subject_set list)')
+    print('       3) Need to email cliff again about the delay time before images are no longer offered for classification on zooniverse')
+    print('       4) Need to make sure _already_seen_ IF statement is correct above, ie it isnt just _if True:_ as otherwise duplicate classifications can happen')
+    print('       5) Adjust config file to change retirement thresholds before running, and can change file paths here as needed ')
     try:
-      while k<1:
-        haveItems, subject_batch = self.caesar_recieve(ce)
+      while True:
+        haveItems, subject_batch,q,q_all = self.caesar_recieve(ce)
+#aws_list[q] = Number of times a retrieval has been made containing q messages.
+        aws_list[q]+=1
         if haveItems:
           k=0
+          print(aws_list)
 #Testing removal of self.save to see whether overwrites data (occasionally)
 #          self.save()
           ce.Config.instance().save()
           # load the just saved ce config
           ce.Config.load(caesar_config_name)
-#          self.send(ce, subject_batch)
         else:
           k+=1
-          print('k = ' + str(k))
-        retire_list_thres.extend(self.retire(subject_batch))
-        retire_list_Nclass.extend(self.retire_classification_count(subject_batch))
-        logging.info('Will be retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
+          print(aws_list)
+        retire_list_thres=self.retire(subject_batch)
+        retire_list_Nclass=self.retire_classification_count(subject_batch)
+        logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+' subjects: ' +\
+                                   str(set(np.array(retire_list_thres+retire_list_Nclass))))
+        retired_list = self.retrieve_list(self.config.retired_items_path)
+        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+        self.save_list(retired_list,self.config.retired_items_path)
+        st=time.time()
+        self.send_panoptes(retire_list_thres,'consensus')
+        self.send_panoptes(retire_list_Nclass,'classification_count')
+        self.save()
+        with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
+          f.write(str(aws_list))
+        et=time.time()
+        logging.info('retirement time: ' + str(et-st))
+        print('')
+
     except KeyboardInterrupt as e:
 ###Retirements:
-      retire_list_thres.extend(self.retire(subject_batch))
-      retire_list_Nclass.extend(self.retire_classification_count(subject_batch))
-      logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
-      logging.info('To retire: ' + str(set(np.array(retire_list_thres+retire_list_Nclass))))
+      retire_list_thres=self.retire(subject_batch)
+      retire_list_Nclass=self.retire_classification_count(subject_batch)
+      logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects: ' +\
+                                 str(set(np.array(retire_list_thres+retire_list_Nclass))))
       retired_list = self.retrieve_list(self.config.retired_items_path)
       retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
       self.save_list(retired_list,self.config.retired_items_path)
-      self.send_panoptes(retire_list_thres,'human')
-      self.send_panoptes(retire_list_Nclass,'human')
-#      self.send_panoptes(retire_list_thres,'consensus')
-#      self.send_panoptes(retire_list_Nclass,'classification_count')
-
+      self.send_panoptes(retire_list_thres,'consensus')
+      self.send_panoptes(retire_list_Nclass,'classification_count')
+      with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
+        f.write(str(aws_list))
       print('Received KeyboardInterrupt {}'.format(e))
       self.save()
       print('Terminating SWAP instance.')
       exit()
-
 ###Retirements:
+    st=time.time()
     logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
     logging.info('To retire: ' + str(set(np.array(retire_list_thres+retire_list_Nclass))))
-    logging.info('N unique tuples: ' + str(len(set((self.retrieve_list(self.config.tuples_path))))))
     retired_list = self.retrieve_list(self.config.retired_items_path)
     retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
     self.save_list(retired_list,self.config.retired_items_path)
-    self.send_panoptes(retire_list_thres,'human')
-    self.send_panoptes(retire_list_Nclass,'human')
-#    self.send_panoptes(retire_list_thres,'consensus')
-#    self.send_panoptes(retire_list_Nclass,'classification_count')
+    self.send_panoptes(retire_list_thres,'consensus')
+    self.send_panoptes(retire_list_Nclass,'classification_count')
     self.save()
+    with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
+      f.write(str(aws_list))
+    et=time.time()
+    logging.info('retirement time: ' + str(et-st))
 
 #Adds gold subjects from the csv to Subject class.
   def get_golds(self, path):
@@ -648,34 +755,36 @@ class SWAP(object):
 #Run Online (misses out on apply_golds but user-scores are updated within process_classification function for online mode.)
   def run_online(self, gold_csv, classification_csv):
     self.get_golds(gold_csv)
-    self.process_classifications_from_csv_dump(classification_csv, online=True)
+    self.process_classifications_from_shuffled_csv(classification_csv, online=True)
 
   def run_caesar(self,gold_csv):
     self.load()
     self.get_golds(gold_csv)
     self.process_classifications_from_caesar('test_config2')
-    a = list((self.retrieve_list(self.config.retired_items_path).copy()))
-    a_set=list(set(self.retrieve_list(self.config.retired_items_path).copy()))
-    N_retired = 0
-    N_active=0
-    for i in range(len(a_set)):
-      if self.workflow.subject_workflow_status(a_set[i]).retirement_reason == None:
-        N_active+=1
-      if self.workflow.subject_workflow_status(a_set[i]).retirement_reason == 'human':
-        N_retired+=1
-    if len(a_set)==len(a):
-        print('N_retired = ' + str(N_retired) + ', N_active = ' + str(N_active))
-    else:
-        print('ERROR HERE: some subjects not retired normally')
-        print('N_retired = ' + str(N_retired) + ', N_active = ' + str(N_active))
+#    a = list((self.retrieve_list(self.config.retired_items_path).copy()))
+#    a_set=list(set(self.retrieve_list(self.config.retired_items_path).copy()))
+#    N_retired = 0
+#    N_active=0
+#    for i in range(len(a_set)):
+#      if self.workflow.subject_workflow_status(a_set[i]).retirement_reason == None:
+#        N_active+=1
+#      if self.workflow.subject_workflow_status(a_set[i]).retirement_reason != None:
+#        N_retired+=1
+#    if len(a_set)==len(a):
+#        print('N_retired = ' + str(N_retired) + ', N_active = ' + str(N_active))
+#    else:
+#        print('ERROR HERE: some subjects not retired normally')
+#        print('N_retired = ' + str(N_retired) + ', N_active = ' + str(N_active))
 
 ###Code to Mass-Unretire subjects from a subject-workflow csv.
 #    import csv
-#    subject_id_set=[]
+#THESE ARE THE SUBJECTS IN THE MINI-BETA TEST TRIALED BEFORE CHRISTMAS. THEY NEED UNRETIRING AND SWAP.DB DELETING TO REFRESH CLASSIFICATIONS.
+    subject_id_set=[71364867,71364863,71364858,71364853,71365254,71365236,71365216,71365187,71365177,71365453,71365446,71365440,71365431,71365424,71365418,71365408,71365396,71365385,71365379,71365370,71365360,71365346,71365337,71365331,71365325,71365313,71365307,71365302,71365292]
 #    with open('/Users/hollowayp/Downloads/space-warps-des-subjects-4.csv') as csvfile:
 #        reader = csv.DictReader(csvfile)
 #        for i,row in enumerate(reader):
 #            subject_id_set.append(row['subject_id'])
 #    print('Unretiring')
 #    self.workflow.unretire_subjects(subject_id_set)
-
+#    for i in range(len(subject_id_set)):
+#      print(self.workflow.subject_workflow_status([subject_id_set[i]]).retirement_reason)

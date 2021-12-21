@@ -34,8 +34,9 @@ def test_online():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_online('./data/des_temp_golds.csv',
-                  './data/classification_csv.csv')
+  swap.run_online('./data/HSC_Classifications_and_Golds/golds.csv','./data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv')
+  #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv
+  #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/alpha_test_classifications_cropped.csv
   swap.save()
   del swap
   swap = SWAP(config=Config())
@@ -100,9 +101,12 @@ def main():
 #  test_initialise()
 #  print('2: Offline')
 #  test_offline()
-  print('3: Online')
+  print('Starting Iteration')
+#  test_online()
 #  test_online()
   test_caesar()
+  print('Finished Iteration')
+#  test_online()
 #  print('4: Compare')
 #  compare_offline_and_online_user_scores(user_id=1517738)
 
