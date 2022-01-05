@@ -29,7 +29,8 @@ class Classification(object):
                user_id,
                subject_id,
                annotation,
-               label_map):
+               label_map,
+               classification_time):
       
     self.id = int(id)
     try:
@@ -39,17 +40,25 @@ class Classification(object):
     self.subject_id = int(subject_id)
     self.label_map  = label_map
     self.label = self.parse(annotation)
+    self.classification_time=classification_time
 
   def parse(self, annotation):
-#    value = annotation['T1'][0]['value']
+#    print(annotation)
     try:
         value = annotation['T1'][0]['value']
-#NEED TO CHECK THIS IN DETAIL - NEED THE 'EXCEPT' FOR CLASSIFICATIONS FROM CSV - NEED TO CHECK IS USING CORRECT VALUE & ANNOTATION NOT JUST EG THE INITIAL ONE IN A LIST.
+#        print('v1:')
+#        print(value)
     except:
         value = annotation[0]['value']
+#        print('v2:')
+#        print(value)
     if value==[]:
+#      print('returning 0')
+#      print('')
       return '0'
     else:
+#      print('returning 1')
+#      print('')
       return '1'
 
 #User Class:
@@ -82,7 +91,7 @@ class User(object):
     else:
       self.initialise_user_score()
     self.initialise_confusion_matrix()
-    self.history = [('_', self.user_score,'_')]
+    self.history = [('_', self.user_score,'_','_')]
   
   def initialise_confusion_matrix(self):
       self.confusion_matrix = {'n_seen': [0]*self.k, 'n_gold': [0]*self.k}
@@ -151,9 +160,9 @@ class Subject(object):
     self.retired = False
     self.retired_as = None
     self.seen = 0
-    self.history = [('_', '_', '_', self.score,'_')]
+    self.history = [('_', '_', '_', self.score,'_','_')]
 
-  def update_score(self, label, user,time_stamp):
+  def update_score(self, label, user,time_stamp,classification_time):
     if label == '0':
       self.score=float(self.score)
       self.score = ((self.score) \
@@ -172,7 +181,7 @@ class Subject(object):
                  + (1-user.user_score[list(self.classes)[0]]) \
                  * (1-self.score)
                  + self.epsilon)
-    self.history.append((user.user_id, user.user_score, label, self.score,time_stamp))
+    self.history.append((user.user_id, user.user_score, label, self.score,time_stamp,classification_time))
     self.seen += 1
 
   def dump(self):
@@ -199,10 +208,9 @@ class SWAP(object):
     self.objects = {}
     self.config=config
     self.last_id = 0
-#DELETE THE NEXT LINE - JUST THERE TO CHECK RETIREMENTS ARE WORKING. IN THIS LINE, ID=WORKFLOW ID
-#    self.id=self.config.workflow
     self.seen = set([])
     self.db_exists = False
+    self.instance_counts=[0,0,0,0]
     self.timeout = timeout # wait x seconds to acquire db connection
     try:
       self.create_db()
@@ -254,7 +262,7 @@ class SWAP(object):
       self.subjects[subject['subject_id']].gold_label = subject['gold_label']
       self.subjects[subject['subject_id']].retired = subject['retired']
       self.subjects[subject['subject_id']].retired_as = subject['retired_as']
-      print('loading subjects'+str(subject['retired_as']))
+#      print('loading subjects'+str(subject['retired_as']))
       self.subjects[subject['subject_id']].seen = subject['seen']
       self.subjects[subject['subject_id']].history = json.loads(subject['history'])
 
@@ -333,6 +341,7 @@ class SWAP(object):
   def process_classification(self, cl, online=False):
     # check user is known
     time_stamp = time.time()
+    classification_time=cl.classification_time
     try:
       self.users[cl.user_id]
     except KeyError:
@@ -347,11 +356,11 @@ class SWAP(object):
       self.subjects[cl.subject_id] = Subject(subject_id = cl.subject_id,
                                              p0 = self.config.p0,
                                              classes = self.config.label_map.keys())
-    self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id],time_stamp)
+    self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id],time_stamp,classification_time)
     if self.subjects[cl.subject_id].gold_label in (0,1) and online:
       gold_label = self.subjects[cl.subject_id].gold_label
       self.users[cl.user_id].update_user_score(gold_label, cl.label)
-    self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score,time_stamp))
+    self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score,time_stamp,classification_time))
     self.last_id = cl.id
     self.seen.add(cl.id)
 
@@ -436,12 +445,11 @@ class SWAP(object):
 
 #Goes through each row in the csv, defining classification events, updating scores (as per process_classification) and labelling subjects to be retired if required.
   def process_classifications_from_csv_dump(self, path, online=False):
-#    retired_list = self.retrieve_list(self.config.retired_items_path)
-#    tuples_list = self.retrieve_list(self.config.tuples_path)
-    with open(path, 'r') as csvdump:
+    with open(path, 'r',encoding='utf-8-sig') as csvdump:
       reader = csv.DictReader(csvdump)
       for row in reader:
         id = int(row['classification_id'])
+        classification_time=row['created_at']
         try:
           assert int(row['workflow_id']) == self.config.workflow
         except AssertionError as e:
@@ -453,25 +461,35 @@ class SWAP(object):
         dt_row = row['created_at']
         subject_id = int(row['subject_ids'])
         annotation = json.loads(row['annotations'])
-        #NEED TO CHANGE THIS BACK FOR DES - FIXED:
-        already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
-#        already_seen_i=False
-#NEED TO ADD THIS LINE IN AGAIN
-#        if (subject_id,user_id) not in tuples_list:
-#          tuples_list.append((subject_id,user_id))
+        try:
+          already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
+          already_seen_i_2=json.loads(row['metadata'])['seen_before']
+          self.instance_counts[0]+=1
+          if already_seen_i!=already_seen_i_2:
+            print('Difference here: '+ str(already_seen_i)+" "+str(already_seen_i_2))
+            self.instance_counts[3]+=1
+        except KeyError:
+          try:
+            already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
+            self.instance_counts[1]+=1
+          except KeyError:
+            already_seen_i=False
+            self.instance_counts[2]+=1
         if already_seen_i==False:
           try:
               cl = Classification(id,
                                   user_id,
                                   subject_id,
                                   annotation,
-                                  label_map=self.config.label_map)
+                                  label_map=self.config.label_map,
+                                  classification_time=classification_time)
           except ValueError:
             continue
           self.process_classification(cl, online)
         else:
           print('duplicate classification' + str((subject_id,user_id)))
-#    self.save_list(tuples_list,self.config.tuples_path)
+      print("On testing, it was found a classification csv may contain both 'already_seen' and 'seen_before' flags. Out of 1873 classifications, 1286 had both flags, 585 only had 'already_seen' and 2 only had 'seen_before'. In 10 instances, the flags differed (ie one said True, the other False). For some reason, all the 'seen_before' flags were True. It seems this 'seen_before' flag is historical and should be ignored. In the few instances where there is no 'already_seen' flag, it is assumed that the user has *not* seen the subject before. self.instance_counts gives: [0]: number of instances where both flags are present, [1]: number of instances where only 'already_seen' flag present, [2]: number of instances where 'already_seen' flag is not present (ie number of instances the already_seen flag is decided a priori to be False), [3]: number of instances where the values for 'already_seen' and 'seen_before' differ (when both present).")
+      print('Instance Counts:' + str(self.instance_counts))
 #***Why is there an try/except function here? Surely need to do both simultaneously?***
 #Original:
 #    try:
@@ -499,15 +517,15 @@ class SWAP(object):
               user_id = row_i['user_name']
             subject_id = int(row_i['subject_ids'])
             annotation = json.loads(row_i['annotations'])
-            #NEED TO CHANGE THIS BACK FOR DES - FIXED:
             already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
-#            already_seen_i=False
+            classification_time=row_i['created_at']
             if already_seen_i==False:
               cl = Classification(id,
                   user_id,
                   subject_id,
                   annotation,
-                  label_map=self.config.label_map)
+                  label_map=self.config.label_map,
+                  classification_time=classification_time)
               self.process_classification(cl, online)
             else:
               print('duplicate classification' + str((subject_id,user_id)))
@@ -548,8 +566,6 @@ class SWAP(object):
   def caesar_recieve(self, ce):
     import logging
     import time
-#    tuples_list = self.retrieve_list(self.config.tuples_path)
-#    retired_list = self.retrieve_list(self.config.retired_items_path)
     logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
     data = ce.Extractor.next()
     haveItems = False
@@ -567,6 +583,7 @@ class SWAP(object):
         user_id = item['user']
       subject_id = int(item['subject'])
       subject_i = self.subjects[subject_id]
+      classification_time=item['classification_time']
       print('')
       print('Gold status: ' + str(subject_i.gold_label))
       print('Previous Panoptes Retirement Reason: '+ str(self.workflow.subject_workflow_status(subject_id).retirement_reason))
@@ -581,18 +598,13 @@ class SWAP(object):
         assert self.workflow.subject_workflow_status([subject_id]).retirement_reason == None
       except:
         print('Subject has already been retired?! ' + str(subject_id))
-#      object_id = item['object_id']
-#NEED TO CHECK THESE ANNOTATIONS ARE THE SAME TYPE AS ABOVE
-      annotation = item['annotations']
       if already_seen_i==True:
         print(str(user_id) + ' has already seen this subject: '+ str(subject_id))
-#      if (subject_id,user_id) not in tuples_list and subject_id not in retired_list:
 #CHECK THIS IF STATEMENT BELOW IS CORRECT BEFORE RUNNING:
       if already_seen_i==False:
 #      if True:
           q+=1
-#          tuples_list.append((subject_id,user_id))
-          cl = Classification(id, user_id, subject_id, annotation,label_map=self.config.label_map)
+          cl = Classification(id, user_id, subject_id, annotation,label_map=self.config.label_map,classification_time=classification_time)
           self.process_classification(cl,online=True)
           #^Adds users to User, subjects to Subjects and updates scores/history's accordingly.
           self.last_id = id
@@ -605,7 +617,6 @@ class SWAP(object):
         logging.info('time taken = ' + str(et-st)+ ' for ' + str(q) + ' classifications, ' + str((et-st)/q) + 's/cl')
     else:
         logging.info('time taken = ' + str(et-st)+ ' for ' + str(q) + ' classifications.')
-#    self.save_list(tuples_list,self.config.tuples_path)
     return haveItems, subject_batch,q,q_all
 
   def process_classifications_from_caesar(self, caesar_config_name):
@@ -628,8 +639,7 @@ class SWAP(object):
         if haveItems:
           k=0
           print(aws_list)
-#Testing removal of self.save to see whether overwrites data (occasionally)
-#          self.save()
+          self.save()
           ce.Config.instance().save()
           # load the just saved ce config
           ce.Config.load(caesar_config_name)
@@ -715,6 +725,7 @@ class SWAP(object):
           user_id = row['user_name']
         subject_id = int(row['subject_ids'])
         annotation = json.loads(row['annotations'])
+        classification_time=row['created_at']
         try:
           assert int(row['workflow_id']) == self.config.workflow
 #          # ignore repeat classifications of the same subject
@@ -726,7 +737,8 @@ class SWAP(object):
                               user_id,
                               subject_id,
                               annotation,
-                              label_map=self.config.label_map)
+                              label_map=self.config.label_map,
+                              classification_time=classification_time)
         except ValueError:
           continue
         try:
@@ -755,7 +767,7 @@ class SWAP(object):
 #Run Online (misses out on apply_golds but user-scores are updated within process_classification function for online mode.)
   def run_online(self, gold_csv, classification_csv):
     self.get_golds(gold_csv)
-    self.process_classifications_from_shuffled_csv(classification_csv, online=True)
+    self.process_classifications_from_csv_dump(classification_csv, online=True)
 
   def run_caesar(self,gold_csv):
     self.load()

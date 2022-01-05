@@ -22,7 +22,7 @@ def test_offline():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load() #ie any previous user/subject details (otherwise gives default values to user/subject).
-  swap.run_offline('./data/golds.csv',
+  swap.run_offline(Config().golds_path,
                    './data/swhsc-6605-classification_060518_0317.csv')
   swap.save()
   del swap
@@ -34,7 +34,7 @@ def test_online():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_online('./data/HSC_Classifications_and_Golds/golds.csv','./data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv')
+  swap.run_online(Config().golds_path,'./data/classifications_file_annot_test_cropped.csv')
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/alpha_test_classifications_cropped.csv
   swap.save()

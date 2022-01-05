@@ -130,3 +130,4 @@ dmypy.json
 
 #sqlite3 databases
 *.db
+examples/data/tuples_data

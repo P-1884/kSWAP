@@ -1,4 +1,9 @@
 import sys
+import pandas as pd
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as pl
+import numpy as np
+import datetime
 sys.path.append('/Users/hollowayp/Documents/GitHub/kSWAP/kswap')
 def thresholds_setting():
     from config import Config as config_0
@@ -11,6 +16,11 @@ def prior_setting():
     from config import Config as config_0
     return config_0().p0
 
+def printer(q,N):
+  for p in range(10):
+      if q == int(p*N/10):
+        print(str(10*p)+'%')
+
 def read_sqlite(dbfile):
     import sqlite3
     from pandas import read_sql_query, read_sql_table
@@ -19,38 +29,44 @@ def read_sqlite(dbfile):
       out = {tbl : read_sql_query(f"SELECT * from {tbl}", dbcon) for tbl in tables}
     return out
 
+def date_time_convert(self, row_created_at):
+  s_i=[]
+  for s in range(len(row_created_at)):
+    if row_created_at[s]=='-' or row_created_at[s]==':':
+      s_i.append(s)
+  dt_i = datetime(int(row_created_at[0:s_i[0]]), int(row_created_at[s_i[0]+1:s_i[1]]), int(row_created_at[s_i[1]+1:s_i[1]+3]),int(row_created_at[s_i[2]-2:s_i[2]]), int(row_created_at[s_i[2]+1:s_i[3]])).timestamp()
+  return dt_i
+
+#FILE PATH HERE
 def trajectory_plot(path='./data/swap.db', subjects=[]):
-    import pandas as pd
-    import matplotlib.patches as mpatches
-    import matplotlib.pyplot as plt
-    import numpy as np
-#    a =pd.DataFrame.from_dict(read_sqlite(path))
-#    print(a)
+    print(pd.DataFrame.from_dict(read_sqlite(path)['subjects']))
     subject_id=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id']
-    if len(subject_id)!=len(set(subject_id)):
-      print('WARNING: DUPLICATION OF SUBJECTS WITHIN DB')
-    users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
     subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
     histories_df = pd.DataFrame(subject_histories)
+    subject_golds=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label']
+    retired=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['retired']
+    retired = sum(1 for x in retired if x!=0)
+    print(subject_histories[136])
+    users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
+    user_score_matrices=users['user_score']
+    user_confusion_matrices=users['confusion_matrix']
+
+    if len(subject_id)!=len(set(subject_id)):
+      print('WARNING: DUPLICATION OF SUBJECTS WITHIN DB')
     hist_i=[]
     for i in range(len(histories_df)):
       hist_i.append(len(eval(histories_df['history'][i])))
-    import numpy as np;import matplotlib.pyplot as pl
-#    plt.hist(hist_i)
-#    pl.show()
-    subject_golds=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label']
     # get subjects
     # max_seen is set by subject with max number of classifications
     max_seen = 1
     subjects=len(set(subject_id))
-    retired=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['retired']
-    retired = sum(1 for x in retired if x!=0)
+
     print('Plotting from ' + str(subjects) + ' subjects of which ' + str(retired) + ' are retired and '  + str(len(histories_df.loc[histories_df['history']!='[["_", "_", "_", 0.0005]]'])) + ' are (uniquely) classified')
-# subjects=[20937590,20937591,20937592,20937593,20937595,20937596,20937599,20937601,20937603,20937605,20937594,20937597,20937604,20937609,20937600,20937611,20937612,20937614,20937615,20937602,20964743,20964703,20964731,20964726,20964727,20964739,20964711,20964735,20964701,20964705,20964697,20964702,20964707,20964720,20964723,20964724,20964730,20964738,20964745,20964746,20964700,20964704,20964717,20964718,20964732,20964747,20964709,20964715,20964719,20964725,20964729,20964733,20865730,20865735,20865731,21100285,21088876,21099617,21102901,21091587,21089681,21093839,21093663,21093235,21093000,21087994,21087602,21093448,21099911,21090710,21089950,21107573,21015283,21088837,21107551,21097925,21102933,21038842,21107039,21098397,21099179,21102560,21105527,21089824,21108230,21106003,21090396,21093977,21093201,21109050,21088007,21098611,21099829,21097483,21106327,21091737,21091986,21006238,21104125,21094176,21102839,21090693,21100556,21101657,21093582,21103010,21092401,21097506,21093610,21090539,21097274,21099283,21100519,21094684,21087524,21094479,21103251,21103610,21090300,21107223,21091209,21090600,21087537,21103845,21089490,21095359,21098539,21093315,21103957,21097302,21009414,21044528,21095314,21095649,21098715,21106457,21105992,21092409,21096841,21092173,21088193,21097954,21102761,21028279,21107577,21101093,21093955,21099147,21102456,21103836,21088653,21088758,21101575,21108270,21096475,21097284,21087623,21106114,21087326,21093222,21106768,21099849,21090466,21107939,21098730,21095088,21104057,21105411,21107705,21097753,21034160,21102709,21096422,21093766,21102879,21105049,21102686,21108077,21108948,21104113,21107678,21092098,21099087,21094327,21094775,21099047,21093891,21105394,21094341,21094307,21091318,21105831,21090278,21094673,20962148,21097341,21102510,21105817,21090989,21103796]
     subjects_final = []
     subjects_history_final=[]
     history_all_final=[]
     golds_final=[]
+    classification_time_final=[]
     if type(subjects) == int:
 # draw random numbers (note there can be duplication) or plot all of them
 #        while len(subjects_final) < subjects:
@@ -62,95 +78,237 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
             subjects_final.append(subject)
             golds_final.append(subject_golds[indx])
             history_i=[]
+            classification_time_i=[]
             history_all_i=[]
             history_list_i=eval(subject_histories[indx])
             for i in range(len(history_list_i)):
               history_i.append(history_list_i[i][3])
+              date_i=history_list_i[i][5]
+              if i==0:
+                classification_time_i.append(-100)
+              else:
+                classification_time_i.append(datetime.datetime(int(date_i[0:4]),int(date_i[5:7]),int(date_i[8:10]),int(date_i[11:13]),int(date_i[14:16]),int(date_i[17:19])).timestamp())
               history_all_i.append(history_list_i[i])
             subjects_history_final.append(history_i)
             history_all_final.append(history_all_i)
+            if len(classification_time_i)!=1:
+                classification_time_i=np.array(classification_time_i)-classification_time_i[1]
+            classification_time_i[0]=-100
+            classification_time_final.append(classification_time_i)
             if len(history_i) > max_seen:
-                max_seen = len(history_i)
+                max_seen = len(history_i)-1
+#            if subject_golds[indx]==0 and history_i[len(history_i)-1]<2.e-4 and history_i[len(history_i)-1]>5.e-5:
+#              print(subject)
     else:
       for p in range(len(subjects)):
         indx = p
         subjects_final.append(subjects[indx])
         golds_final.append(subject_golds[indx])
         history_i=[]
+        classification_time_i=[]
         history_all_i=[]
         history_list_i=eval(subject_histories[indx])
         for i in range(len(history_list_i)):
           history_i.append(history_list_i[i][3])
           history_all_i.append(history_list_i[i])
+          date_i=history_list_i[i][5]
+          if i==0:
+            classification_time_i.append(-100)
+          else:
+            classification_time_i.append(datetime.datetime(int(date_i[0:4]),int(date_i[5:7]),int(date_i[8:10]),int(date_i[11:13]),int(date_i[14:16]),int(date_i[17:19])).timestamp())
         subjects_history_final.append(history_i)
         history_all_final.append(history_all_i)
+        classification_time_final.append(np.array(classification_time_i)-classification_time_i[1])
         if len(history_i) > max_seen:
             max_seen = len(history_i)
     subjects = subjects_final
-    fig, ax = plt.subplots(figsize=(3,3), dpi=300)
-    ax.tick_params(labelsize=5)
-
-    #####
-    # pretty up the figure
-    #####
-    color_test = 'gray'
-    color_bogus = 'red'
-    color_real = 'blue'
-    colors = [color_bogus, color_real, color_test]
-
-    linewidth_test = 1.0
-    linewidth_bogus = 1.5
-    linewidth_real = 1.5
-    linewidths = [linewidth_bogus, linewidth_real, linewidth_test]
-
-    alpha_test = 0.1
-    alpha_bogus = 0.3
-    alpha_real = 0.3
-    alphas = [alpha_bogus, alpha_real, alpha_test]
-
-
-    # axes and labels
-    p_min = 5e-8
-    p_max = 1
-    ax.set_xlim(p_min, p_max)
-    ax.set_xscale('log')
-    ax.set_ylim(max_seen+1,0)
-#    if logy:
-#        ax.set_yscale('log')
-
+#    for g in range(len(history_all_final)):
+#        print(history_all_final[g])
     p_real , p_bogus= thresholds_setting()
 
-    ax.axvline(x=prior_setting(), color=color_test, linestyle='dotted')
-    ax.axvline(x=p_bogus, color=color_bogus, linestyle='dotted')
-    ax.axvline(x=p_real, color=color_real, linestyle='dotted')
-    ax.set_xlabel('Posterior Probability Pr(LENS|d)',fontsize=5)
-    ax.set_ylabel('Subject Classification History',fontsize=5)
-    # plot history trajectories
-    for j in range(len(subjects)):
-        # clip history
-        history = np.array(subjects_history_final[j])
-        history = np.where(history < p_min, p_min, history)
-        history = np.where(history > p_max, p_max, history)
-        # trajectory
-        y = np.arange(len(history) + 1)-1
+    def plotting_traj(subjects, subjects_history_final,timer=False):
+        fig, ax = pl.subplots(figsize=(3,3), dpi=300)
+        ax.tick_params(labelsize=5)
 
-        # add initial value
-        history = np.append(prior_setting(), history)
-        ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
-        # a point at the end
-        ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+        color_test = 'gray';color_bogus = 'red';color_real = 'blue'
+        colors = [color_bogus, color_real, color_test]
+        
+        linewidth_test = 1.0; linewidth_bogus = 1.5; linewidth_real = 1.5
+        linewidths = [linewidth_bogus, linewidth_real, linewidth_test]
+        
+        alpha_test = 0.1; alpha_bogus = 0.3; alpha_real = 0.3
+        alphas = [alpha_bogus, alpha_real, alpha_test]
 
-    # add legend
-    patches = []
-    for color, alpha, label in zip(colors, alphas, ['Bogus', 'Real', 'Test']):
-        patch = mpatches.Patch(color=color, alpha=alpha, label=label)
-        patches.append(patch)
-    ax.legend(handles=patches, loc='upper right', framealpha=1.0,prop={'size':5})
+        # axes and labels
+        p_min = 5e-8
+        p_max = 1
+        if timer==False:
+            ax.set_xlim(p_min, p_max)
+            ax.set_xscale('log')
+            ax.set_ylim(max_seen+1,0)
+            ax.axvline(x=prior_setting(), color=color_test, linestyle='dotted')
+            ax.axvline(x=p_bogus, color=color_bogus, linestyle='dotted')
+            ax.axvline(x=p_real, color=color_real, linestyle='dotted')
+            ax.set_xlabel('Posterior Probability Pr(LENS|d)',fontsize=5)
+            ax.set_ylabel('Number of Classifications',fontsize=5)
+            # plot history trajectories
+            sub_list=[]
+            for j in range(len(subjects)):
+                # clip history
+                history = np.array(subjects_history_final[j])
+#                history = np.where(history < p_min, p_min, history)
+#                history = np.where(history > p_max, p_max, history)
+                # trajectory
+                y = np.arange(len(history) + 1)-1
+                # add initial value
+                history = np.append(prior_setting(), history)
+                ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
+                # a point at the end
+                if subjects[j] not in sub_list:
+                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                else:
+                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                # add legend
+            patches = []
+            for color, alpha, label in zip(colors, alphas, ['Bogus', 'Real', 'Test']):
+                patch = mpatches.Patch(color=color, alpha=alpha, label=label)
+                patches.append(patch)
+            ax.legend(handles=patches, loc='upper right', framealpha=1.0,prop={'size':5})
+            fig.tight_layout()
+            pl.show()
+        else:
+            ax.set_xlim(p_min, p_max)
+            ax.set_xscale('log')
+            ax.axvline(x=prior_setting(), color=color_test, linestyle='dotted')
+            ax.axvline(x=p_bogus, color=color_bogus, linestyle='dotted')
+            ax.axvline(x=p_real, color=color_real, linestyle='dotted')
+            ax.set_xlabel('Posterior Probability Pr(LENS|d)',fontsize=5)
+            ax.set_ylabel('Time since first classification/s',fontsize=5)
+            sub_list=[]
+            ax.set_yscale('log')
+            #NB Truncating Here:
+            for j in range(len(subjects)):
+                printer(j,len(subjects))
+                history = np.array(subjects_history_final[j])
+#                history = np.where(history < p_min, p_min, history)
+#                history = np.where(history > p_max, p_max, history)
+                y = classification_time_final[j]
+                if np.max(y)>5*24*60*60:
+                  print(j)
+                ax.plot(history[1:len(history)], y[1:len(y)]+1, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
+                for f in range(1,len(y)):
+                  ax.annotate(datetime.timedelta(seconds=y[f]), (history[f], y[f]),fontsize=1)
+                if subjects[j] not in sub_list:
+                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                else:
+                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+            patches = []
+            for color, alpha, label in zip(colors, alphas, ['Bogus', 'Real', 'Test']):
+                patch = mpatches.Patch(color=color, alpha=alpha, label=label)
+                patches.append(patch)
+            for t in range(1,10,2):
+                ax.annotate(str(t)+'minutes',(p_min,60*t),fontsize=3)
+                ax.axhline(y=60*t, color='k',linewidth=0.05)
+                ax.annotate(str(t)+'hours',(p_min,60*60*t),fontsize=3)
+                ax.axhline(y=60*60*t, color='k',linewidth=0.05)
+                ax.annotate(str(t)+'days',(p_min,24*60*60*t),fontsize=3)
+                ax.axhline(y=24*60*60*t, color='k',linewidth=0.05)
+            ax.legend(handles=patches, loc='upper right', framealpha=1.0,prop={'size':5})
+            fig.tight_layout()
+            pl.show()
 
-    fig.tight_layout()
+    plotting_traj(subjects, subjects_history_final,timer=True)
+    posterior_prob_final=[]
+    for i in range(len(subjects_history_final)):
+      posterior_prob_final.append(subjects_history_final[i][len(subjects_history_final[i])-1])
+    N_class_final=[]
+    for i in range(len(history_all_final)):
+#Need to subtract 1 (as below) as unclassified subjects still have the prior in their history.
+      N_class_final.append(len(history_all_final[i])-1)
+    def plotting_hist(N_class_final,subjects_history_final):
+      N_class_bins=[[],[],[]]
+      for k in range(len(N_class_final)):
+        N_class_bins[golds_final[k]+1].append(N_class_final[k])
+      edgecolors=['grey','red','blue']
+      for r in range(3):
+        pl.hist(N_class_bins[r],bins=(max(N_class_final)-min(N_class_final))+1,range=(min(N_class_final),max(N_class_final)+1),                      stacked=False,edgecolor=edgecolors[r],fill=False,align='left')
+      pl.xlabel('Number of Classifications')
+      pl.ylabel('N')
+      pl.yscale('log')
+      pl.show()
+      post_prob_bins=[[],[],[]]
+      for j in range(len(posterior_prob_final)):
+        if len(subjects_history_final[j])!=1:
+          post_prob_bins[golds_final[j]+1].append(posterior_prob_final[j])
+      pl.hist(post_prob_bins[0],bins=np.logspace(np.log10(1e-8),np.log10(1.0), 20),stacked=False,edgecolor = 'grey',fill=False)
+      pl.hist(post_prob_bins[1],bins=np.logspace(np.log10(1e-8),np.log10(1.0), 20),stacked=False,edgecolor='red',fill=False)
+      pl.hist(post_prob_bins[2],bins=np.logspace(np.log10(1e-8),np.log10(1.0), 20),stacked=False,edgecolor='blue',fill=False)
+      pl.legend(['Test','Dud','Lens'])
+      pl.xlabel('Posterior Probability')
+      pl.ylabel('N')
+      pl.yscale('log')
+      pl.xscale('log')
+      pl.show()
+      for p in range(len(user_score_matrices)):
+        pl.scatter(eval(user_score_matrices[p])['1'],eval(user_score_matrices[p])['0'],s=(1+sum(eval(user_confusion_matrices[p])['n_seen']))/15,color='blue')
+      pl.gca().set_aspect('equal')
+      pl.xlabel('P("LENS"|LENS)')
+      pl.ylabel('P("NOT|NOT)')
+      pl.xlim(0,1)
+      pl.ylim(0,1)
+      pl.show()
+#    plotting_hist(N_class_final,subjects_history_final)
 
-#    if path:
-#        fig.savefig(path, dpi=300)
+    def retrieve_list(list_path):
+        try:
+            df = pd.read_csv(list_path)
+            list_total = []
+            for row in df.iterrows():
+                try:
+                  list_i = eval(row[1]['list items'])
+                except:
+                  list_i=row[1]['list items']
+                list_total.append(list_i)
+            return list_total
+        except FileNotFoundError:
+            return []
 
-    plt.show()
+#FILE PATH HERE
+    tuples_list=retrieve_list('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data')
+#        tuples_list=retrieve_list('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data')
+#FILE PATH HERE
+    df_s=pd.DataFrame.from_dict(read_sqlite('./data/swap.db')['subjects'])
+
+    def perc_plot(gold_label_i):
+        assert gold_label_i in (0,1)
+        if gold_label_i==1:
+              p_level=5
+        if gold_label_i==0:
+              p_level=95
+        subjects_checked={}
+        subject_score_dict={}
+        percentile_list=[]
+        N = len(tuples_list)
+        for q in range(N):
+          printer(q,N)
+          subject_q=tuples_list[q][0]
+          if int(df_s.loc[df_s['subject_id'] == subject_q]['gold_label'])==gold_label_i:
+              try:
+                n = subjects_checked[subject_q]
+                subjects_checked[subject_q]+=1
+                subject_score_dict[subject_q]=eval(list(df_s.loc[df_s['subject_id'] == subject_q]['history'])[0])[n][3]
+              except:
+                subjects_checked[subject_q]=1
+                subject_score_dict[subject_q]=eval(list(df_s.loc[df_s['subject_id'] == subject_q]['history'])[0])[0][3]
+          if q%100==0 and q!=0:
+            percentile_list.append(np.percentile(list(subject_score_dict.values()),p_level))
+
+        pl.plot(100*np.arange(len(percentile_list)),percentile_list)
+        pl.xlabel('N. Classifications')
+        pl.ylabel('P_gold= '+str(gold_label_i))
+        pl.show()
+
+#    perc_plot(0)
+#    perc_plot(1)
+
 trajectory_plot()
