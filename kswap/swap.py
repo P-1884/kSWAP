@@ -22,7 +22,6 @@ import time
 #**See note line 459**
 #Classification Class:
 #Arguments: Classification_id, User_id, Subject_id, Annotation, Label_map
-#For the time-being, if annotations is not '[]', classifies as a lens, if not, classifies as not-a-lens.
 class Classification(object):
   def __init__(self,
                id,
@@ -43,22 +42,13 @@ class Classification(object):
     self.classification_time=classification_time
 
   def parse(self, annotation):
-#    print(annotation)
     try:
         value = annotation['T1'][0]['value']
-#        print('v1:')
-#        print(value)
     except:
         value = annotation[0]['value']
-#        print('v2:')
-#        print(value)
     if value==[]:
-#      print('returning 0')
-#      print('')
       return '0'
     else:
-#      print('returning 1')
-#      print('')
       return '1'
 
 #User Class:
@@ -130,7 +120,7 @@ class User(object):
             json.dumps(self.history))
 
 #Subject Class:
-#Arguments: Subject_ID, p0 (ie initial probability), classes (0,1) , gold-label (default= -1 ie not test), k (ie N. classes), retired (=False).
+#Arguments: Subject_ID, p0 (ie initial probability), classes (0,1) , gold-label (default= -1 ie not training), k (ie N. classes), retired (=False).
 #Retired: Initialised to False
 #History: Initialised as [_,_,_,p0] ie (user_id, user_score, label, subject_score)
 #Seen: Initialised to 0
@@ -554,7 +544,7 @@ class SWAP(object):
             row_list=[]
             dt_0 = self.date_time_convert(row['created_at'])
             row_list.append(row)
-#NOTE THIS IF STATEMENT MUST GO LAST:
+        #Note this 'if' statement must go last:
         if q=='initialise':
           dt_0 = self.date_time_convert(row['created_at'])
           row_list.append(row)
@@ -598,11 +588,12 @@ class SWAP(object):
         assert self.workflow.subject_workflow_status([subject_id]).retirement_reason == None
       except:
         print('Subject has already been retired?! ' + str(subject_id))
+      annotation = item['annotations']
+
       if already_seen_i==True:
         print(str(user_id) + ' has already seen this subject: '+ str(subject_id))
 #CHECK THIS IF STATEMENT BELOW IS CORRECT BEFORE RUNNING:
       if already_seen_i==False:
-#      if True:
           q+=1
           cl = Classification(id, user_id, subject_id, annotation,label_map=self.config.label_map,classification_time=classification_time)
           self.process_classification(cl,online=True)
@@ -791,7 +782,10 @@ class SWAP(object):
 ###Code to Mass-Unretire subjects from a subject-workflow csv.
 #    import csv
 #THESE ARE THE SUBJECTS IN THE MINI-BETA TEST TRIALED BEFORE CHRISTMAS. THEY NEED UNRETIRING AND SWAP.DB DELETING TO REFRESH CLASSIFICATIONS.
-    subject_id_set=[71364867,71364863,71364858,71364853,71365254,71365236,71365216,71365187,71365177,71365453,71365446,71365440,71365431,71365424,71365418,71365408,71365396,71365385,71365379,71365370,71365360,71365346,71365337,71365331,71365325,71365313,71365307,71365302,71365292]
+#First Beta Test:
+#subject_id_set=[71364867,71364863,71364858,71364853,71365254,71365236,71365216,71365187,71365177,71365453,71365446,71365440,71365431,71365424,71365418,71365408,71365396,71365385,71365379,71365370,71365360,71365346,71365337,71365331,71365325,71365313,71365307,71365302,71365292]
+#Jan Beta Test:
+    subject_id_set=[71700294 ,71700293 ,71700292 ,71700291 ,71700299 ,71700298 ,71700297 ,71700296 ,71700295 ,71700319 ,71700318 ,71700317 ,71700316 ,71700315 ,71700314 ,71700313 ,71700312 ,71700311 ,71700310 ,71700309 ,71700308 ,71700307 ,71700306 ,71700305 ,71700304 ,71700303 ,71700302 ,71700301 ,71700300]
 #    with open('/Users/hollowayp/Downloads/space-warps-des-subjects-4.csv') as csvfile:
 #        reader = csv.DictReader(csvfile)
 #        for i,row in enumerate(reader):

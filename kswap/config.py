@@ -14,14 +14,14 @@ class Config(object):
     self.classes = ['0', '1']
     self.p0 = 5.e-4
     self.gamma = 1
-    self.thresholds = (2.5e-4, 1)
+    self.thresholds = (1.e-5, 1)
     self.lower_retirement_limit=4
     self.retirement_limit = 30
 
 #File Paths:
     self.tuples_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data'
     self.retired_items_path='/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/retired_list'
-    self.golds_path= './data/new_golds_file.csv'
+    self.golds_path= './data/jan_beta_golds_file.csv'
 #Path below might be redundant?
     self.kswap_path='/Users/hollowayp/Documents/GitHub/kSWAP/kswap'
 #When plotting trajectories, there is an additional path (on line 2 of kswap_plots.py) which needs to be updated to the location of the config file (found at '...kSWAP/kswap/config.py')

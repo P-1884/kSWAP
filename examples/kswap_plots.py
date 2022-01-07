@@ -37,8 +37,41 @@ def date_time_convert(self, row_created_at):
   dt_i = datetime(int(row_created_at[0:s_i[0]]), int(row_created_at[s_i[0]+1:s_i[1]]), int(row_created_at[s_i[1]+1:s_i[1]+3]),int(row_created_at[s_i[2]-2:s_i[2]]), int(row_created_at[s_i[2]+1:s_i[3]])).timestamp()
   return dt_i
 
+#self.thresholds = (1.e-5, 1)
+#self.lower_retirement_limit=4
+#self.retirement_limit = 30
+
+def efficiency_calc(path='./data/swap.db'):
+    from config import Config as config_0
+    p_retire_lower=config_0().thresholds[0]
+    p_retire_upper=config_0().thresholds[1]
+    lower_retirement_limit=config_0().lower_retirement_limit
+    retirement_limit=config_0().retirement_limit
+    subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
+    print(p_retire_lower,p_retire_upper,lower_retirement_limit,retirement_limit)
+    inefficiency_count=0
+    should_be_retired_list=[]
+    for i in range(len(subject_histories)):
+      inefficiency_count_i=0
+      history_scores=[]
+      for j in range(len(eval(subject_histories[i]))):
+        history_scores.append(eval(subject_histories[i])[j][3])
+      history_scores=np.array(history_scores)
+      if (history_scores<p_retire_lower).any():
+        if np.where(history_scores<p_retire_lower)[0][0]!=len(history_scores)-1:
+          inefficiency_count_i=1
+      if (history_scores>p_retire_upper).any():
+        if np.where(history_scores>p_retire_upper)[0][0]!=len(history_scores)-1:
+          inefficiency_count_i=1
+      inefficiency_count+=inefficiency_count_i
+      if inefficiency_count_i==1:
+        should_be_retired_list.append(i)
+#      if subject_histories
+    print(inefficiency_count,should_be_retired_list)
+#efficiency_calc()
+
 #FILE PATH HERE
-def trajectory_plot(path='./data/swap.db', subjects=[]):
+def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
     print(pd.DataFrame.from_dict(read_sqlite(path)['subjects']))
     subject_id=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id']
     subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
@@ -46,7 +79,6 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
     subject_golds=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label']
     retired=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['retired']
     retired = sum(1 for x in retired if x!=0)
-    print(subject_histories[136])
     users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
     user_score_matrices=users['user_score']
     user_confusion_matrices=users['confusion_matrix']
@@ -163,11 +195,13 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
                 # add initial value
                 history = np.append(prior_setting(), history)
                 ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
+                ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
+
                 # a point at the end
-                if subjects[j] not in sub_list:
-                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
-                else:
-                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                if j in [0, 1, 2, 3, 18, 19, 22, 24, 27]:
+                  ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,c='k')
+
                 # add legend
             patches = []
             for color, alpha, label in zip(colors, alphas, ['Bogus', 'Real', 'Test']):
@@ -179,6 +213,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
         else:
             ax.set_xlim(p_min, p_max)
             ax.set_xscale('log')
+            ax.set_ylim(bottom=1,top=1.1*np.max([item for sublist in classification_time_final for item in sublist]))
             ax.axvline(x=prior_setting(), color=color_test, linestyle='dotted')
             ax.axvline(x=p_bogus, color=color_bogus, linestyle='dotted')
             ax.axvline(x=p_real, color=color_real, linestyle='dotted')
@@ -195,13 +230,11 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
                 y = classification_time_final[j]
                 if np.max(y)>5*24*60*60:
                   print(j)
-                ax.plot(history[1:len(history)], y[1:len(y)]+1, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
-                for f in range(1,len(y)):
-                  ax.annotate(datetime.timedelta(seconds=y[f]), (history[f], y[f]),fontsize=1)
-                if subjects[j] not in sub_list:
-                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
-                else:
-                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+#                ax.plot(history[1:len(history)], y[1:len(y)]+1, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
+#                for f in range(1,len(y)):
+#                  ax.annotate(datetime.timedelta(seconds=y[f]), (history[f], y[f]),fontsize=1)
+                ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
+                ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
             patches = []
             for color, alpha, label in zip(colors, alphas, ['Bogus', 'Real', 'Test']):
                 patch = mpatches.Patch(color=color, alpha=alpha, label=label)
@@ -213,8 +246,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
                 ax.axhline(y=60*60*t, color='k',linewidth=0.05)
                 ax.annotate(str(t)+'days',(p_min,24*60*60*t),fontsize=3)
                 ax.axhline(y=24*60*60*t, color='k',linewidth=0.05)
-            ax.legend(handles=patches, loc='upper right', framealpha=1.0,prop={'size':5})
-            fig.tight_layout()
+            ax.legend(handles=patches, loc='lower right', framealpha=1.0,prop={'size':5})
             pl.show()
 
     plotting_traj(subjects, subjects_history_final,timer=True)
