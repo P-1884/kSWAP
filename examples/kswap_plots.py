@@ -37,10 +37,6 @@ def date_time_convert(self, row_created_at):
   dt_i = datetime(int(row_created_at[0:s_i[0]]), int(row_created_at[s_i[0]+1:s_i[1]]), int(row_created_at[s_i[1]+1:s_i[1]+3]),int(row_created_at[s_i[2]-2:s_i[2]]), int(row_created_at[s_i[2]+1:s_i[3]])).timestamp()
   return dt_i
 
-#self.thresholds = (1.e-5, 1)
-#self.lower_retirement_limit=4
-#self.retirement_limit = 30
-
 def efficiency_calc(path='./data/swap.db'):
     from config import Config as config_0
     p_retire_lower=config_0().thresholds[0]
@@ -48,7 +44,7 @@ def efficiency_calc(path='./data/swap.db'):
     lower_retirement_limit=config_0().lower_retirement_limit
     retirement_limit=config_0().retirement_limit
     subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
-    print(p_retire_lower,p_retire_upper,lower_retirement_limit,retirement_limit)
+    subject_golds=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label']
     inefficiency_count=0
     should_be_retired_list=[]
     for i in range(len(subject_histories)):
@@ -57,21 +53,27 @@ def efficiency_calc(path='./data/swap.db'):
       for j in range(len(eval(subject_histories[i]))):
         history_scores.append(eval(subject_histories[i])[j][3])
       history_scores=np.array(history_scores)
-      if (history_scores<p_retire_lower).any():
+#First if: Retirement could only be inefficient if some of the scores are beyond a threshold, and the subject isn't a gold...
+#Second if: and only if there are any occurences when the score is beyond the threshold (LHS, below) which is not the last time a classification is made (RHS)
+#Third if: and only if two classifications have been made after the subject has been seen more than lower_retirement_limit times:
+      if (history_scores<p_retire_lower).any() and subject_golds[i]==-1:
         if np.where(history_scores<p_retire_lower)[0][0]!=len(history_scores)-1:
-          inefficiency_count_i=1
-      if (history_scores>p_retire_upper).any():
+          if np.sum((history_scores<p_retire_lower)*[1 if i >= lower_retirement_limit else 0 for i in range(len(history_scores))])>=2:
+            inefficiency_count_i=1
+#Repeating for the other threshold:
+      if (history_scores>p_retire_upper).any() and subject_golds[i]==-1:
         if np.where(history_scores>p_retire_upper)[0][0]!=len(history_scores)-1:
-          inefficiency_count_i=1
+          if np.sum((history_scores>p_retire_upper)*[1 if i >= lower_retirement_limit else 0 for i in range(len(history_scores))])>=2:
+            inefficiency_count_i=1
       inefficiency_count+=inefficiency_count_i
       if inefficiency_count_i==1:
         should_be_retired_list.append(i)
-#      if subject_histories
     print(inefficiency_count,should_be_retired_list)
-#efficiency_calc()
+    return should_be_retired_list
+should_be_retired_list= efficiency_calc()
 
 #FILE PATH HERE
-def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
+def trajectory_plot(path='./data/swap.db', subjects=[]):
     print(pd.DataFrame.from_dict(read_sqlite(path)['subjects']))
     subject_id=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id']
     subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
@@ -93,7 +95,7 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
     max_seen = 1
     subjects=len(set(subject_id))
 
-    print('Plotting from ' + str(subjects) + ' subjects of which ' + str(retired) + ' are retired and '  + str(len(histories_df.loc[histories_df['history']!='[["_", "_", "_", 0.0005]]'])) + ' are (uniquely) classified')
+    print('Plotting from ' + str(subjects) + ' subjects of which ' + str(retired) + ' are retired and '  + str(len(histories_df.loc[histories_df['history']!='[["_", "_", "_", 0.0005, "_", "_"]]'])) + ' are (uniquely) classified')
     subjects_final = []
     subjects_history_final=[]
     history_all_final=[]
@@ -105,8 +107,6 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
 #            indx = np.random.choice(len(subject_id))
         for indx in range(len(subject_id)):
             subject = subject_id[indx]
-            # if subject.seen < 3:
-            #     continue
             subjects_final.append(subject)
             golds_final.append(subject_golds[indx])
             history_i=[]
@@ -129,8 +129,6 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
             classification_time_final.append(classification_time_i)
             if len(history_i) > max_seen:
                 max_seen = len(history_i)-1
-#            if subject_golds[indx]==0 and history_i[len(history_i)-1]<2.e-4 and history_i[len(history_i)-1]>5.e-5:
-#              print(subject)
     else:
       for p in range(len(subjects)):
         indx = p
@@ -154,8 +152,6 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
         if len(history_i) > max_seen:
             max_seen = len(history_i)
     subjects = subjects_final
-#    for g in range(len(history_all_final)):
-#        print(history_all_final[g])
     p_real , p_bogus= thresholds_setting()
 
     def plotting_traj(subjects, subjects_history_final,timer=False):
@@ -197,12 +193,14 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
                 ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
                 ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
 
-                # a point at the end
+                # add a point at the end
                 ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
-                if j in [0, 1, 2, 3, 18, 19, 22, 24, 27]:
+                if j in should_be_retired_list:
                   ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,c='k')
-
-                # add legend
+                  abc=[]
+                  for s in range(len(classification_time_final[j])):
+                    abc.append(str(datetime.timedelta(seconds=classification_time_final[j][s])))
+                  print(abc)
             patches = []
             for color, alpha, label in zip(colors, alphas, ['Bogus', 'Real', 'Test']):
                 patch = mpatches.Patch(color=color, alpha=alpha, label=label)
@@ -220,7 +218,7 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
             ax.set_xlabel('Posterior Probability Pr(LENS|d)',fontsize=5)
             ax.set_ylabel('Time since first classification/s',fontsize=5)
             sub_list=[]
-            ax.set_yscale('log')
+#            ax.set_yscale('log')
             #NB Truncating Here:
             for j in range(len(subjects)):
                 printer(j,len(subjects))
@@ -228,13 +226,16 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
 #                history = np.where(history < p_min, p_min, history)
 #                history = np.where(history > p_max, p_max, history)
                 y = classification_time_final[j]
-                if np.max(y)>5*24*60*60:
-                  print(j)
-#                ax.plot(history[1:len(history)], y[1:len(y)]+1, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
+                ax.plot(history[1:len(history)], y[1:len(y)]+1, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
 #                for f in range(1,len(y)):
-#                  ax.annotate(datetime.timedelta(seconds=y[f]), (history[f], y[f]),fontsize=1)
-                ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
+#                  ax.annotate(datetime.timedelta(seconds=y[f]), (history[f], y[f]),fontsize=3)
+                ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=1,s=1)
                 ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                if j in should_be_retired_list:
+                  ax.scatter(history, y,marker='+',linewidth=1,color='k',s=1)
+                  ax.scatter(history[-1:], y[-1:], s=1,color='k')
+                  for f in range(1,len(y)):
+                    ax.annotate(datetime.timedelta(seconds=y[f]), (history[f], y[f]),fontsize=3)
             patches = []
             for color, alpha, label in zip(colors, alphas, ['Bogus', 'Real', 'Test']):
                 patch = mpatches.Patch(color=color, alpha=alpha, label=label)
@@ -249,7 +250,7 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
             ax.legend(handles=patches, loc='lower right', framealpha=1.0,prop={'size':5})
             pl.show()
 
-    plotting_traj(subjects, subjects_history_final,timer=True)
+    plotting_traj(subjects, subjects_history_final,timer=False)
     posterior_prob_final=[]
     for i in range(len(subjects_history_final)):
       posterior_prob_final.append(subjects_history_final[i][len(subjects_history_final[i])-1])
@@ -257,16 +258,19 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
     for i in range(len(history_all_final)):
 #Need to subtract 1 (as below) as unclassified subjects still have the prior in their history.
       N_class_final.append(len(history_all_final[i])-1)
+
     def plotting_hist(N_class_final,subjects_history_final):
       N_class_bins=[[],[],[]]
       for k in range(len(N_class_final)):
         N_class_bins[golds_final[k]+1].append(N_class_final[k])
       edgecolors=['grey','red','blue']
+      class_name=['Test','Dud','Lens']
       for r in range(3):
+        print(class_name[r]+': '+ str(np.histogram(N_class_bins[r],bins=(max(N_class_final)-min(N_class_final))+1,range=(min(N_class_final),max(N_class_final)+1))[0]))
         pl.hist(N_class_bins[r],bins=(max(N_class_final)-min(N_class_final))+1,range=(min(N_class_final),max(N_class_final)+1),                      stacked=False,edgecolor=edgecolors[r],fill=False,align='left')
       pl.xlabel('Number of Classifications')
       pl.ylabel('N')
-      pl.yscale('log')
+      pl.legend(['Test','Dud','Lens'])
       pl.show()
       post_prob_bins=[[],[],[]]
       for j in range(len(posterior_prob_final)):
@@ -306,10 +310,7 @@ def trajectory_plot(path='./data/swap.db 14.38.36', subjects=[]):
             return []
 
 #FILE PATH HERE
-    tuples_list=retrieve_list('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data')
-#        tuples_list=retrieve_list('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data')
-#FILE PATH HERE
-    df_s=pd.DataFrame.from_dict(read_sqlite('./data/swap.db')['subjects'])
+#    df_s=pd.DataFrame.from_dict(read_sqlite('./data/swap.db')['subjects'])
 
     def perc_plot(gold_label_i):
         assert gold_label_i in (0,1)

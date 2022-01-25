@@ -34,7 +34,7 @@ def test_online():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_online(Config().golds_path,'./data/classifications_file_annot_test_cropped.csv')
+  swap.run_online('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/dec_beta_golds_file.csv','./data/Dec_21_test_classifications.csv')
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/alpha_test_classifications_cropped.csv
   swap.save()

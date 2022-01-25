@@ -21,7 +21,7 @@ class Config(object):
 #File Paths:
     self.tuples_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/tuples_data'
     self.retired_items_path='/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/retired_list'
-    self.golds_path= './data/jan_beta_golds_file.csv'
+    self.golds_path= './data/des_golds_beta_test_25jan.csv'
 #Path below might be redundant?
     self.kswap_path='/Users/hollowayp/Documents/GitHub/kSWAP/kswap'
 #When plotting trajectories, there is an additional path (on line 2 of kswap_plots.py) which needs to be updated to the location of the config file (found at '...kSWAP/kswap/config.py')

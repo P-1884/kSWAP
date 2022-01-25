@@ -4,10 +4,10 @@ A basic script to create a golds csv from a set of classifications
 import argparse
 import pandas as pd
 
-classifications_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/space-warps-des-subjects-alpha-test.csv'
-out_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/des_golds_alpha_test.csv'
+subjects_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/beta_test_25jan_subjects.csv'
+out_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/des_golds_beta_test_25jan.csv'
 
-df = pd.read_csv(classifications_path)
+df = pd.read_csv(subjects_path)
 
 # extract subject_id and gold status. Purge if not clear
 subjects = []

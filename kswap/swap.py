@@ -368,7 +368,7 @@ class SWAP(object):
 # if this is a gold standard image never retire
         continue
       subject.score=float(subject.score)
-      if (subject.score < self.config.thresholds[0]) and subject.seen>self.config.lower_retirement_limit:
+      if (subject.score < self.config.thresholds[0]) and subject.seen>=self.config.lower_retirement_limit:
         if subject.gold_label !=-1:
           print('NOT CONTINUING!!'+str(type(subject.gold_label)))
         subject.retired = True
@@ -457,6 +457,7 @@ class SWAP(object):
           self.instance_counts[0]+=1
           if already_seen_i!=already_seen_i_2:
             print('Difference here: '+ str(already_seen_i)+" "+str(already_seen_i_2))
+            already_seen_i=True
             self.instance_counts[3]+=1
         except KeyError:
           try:
@@ -478,8 +479,10 @@ class SWAP(object):
           self.process_classification(cl, online)
         else:
           print('duplicate classification' + str((subject_id,user_id)))
-      print("On testing, it was found a classification csv may contain both 'already_seen' and 'seen_before' flags. Out of 1873 classifications, 1286 had both flags, 585 only had 'already_seen' and 2 only had 'seen_before'. In 10 instances, the flags differed (ie one said True, the other False). For some reason, all the 'seen_before' flags were True. It seems this 'seen_before' flag is historical and should be ignored. In the few instances where there is no 'already_seen' flag, it is assumed that the user has *not* seen the subject before. self.instance_counts gives: [0]: number of instances where both flags are present, [1]: number of instances where only 'already_seen' flag present, [2]: number of instances where 'already_seen' flag is not present (ie number of instances the already_seen flag is decided a priori to be False), [3]: number of instances where the values for 'already_seen' and 'seen_before' differ (when both present).")
-      print('Instance Counts:' + str(self.instance_counts))
+      print("On testing, it was found a classification csv may contain both 'already_seen' and 'seen_before' flags. Out of 1873 classifications, 1286 had both flags, 585 only had 'already_seen' and 2 only had 'seen_before'. In 10 instances, the flags differed (ie one said True, the other False). For some reason, all the 'seen_before' flags were True. It seems this 'seen_before' flag is historical. In the few instances where there is no 'already_seen' flag, it is assumed that the user has *not* seen the subject before, however in cases where the flags differ, it is assumed the user *has* seen the subject before (to be on the safe side, and why else would the seen_before flag be present?). self.instance_counts gives: [0]: number of instances where both flags are present, [1]: number of instances where only 'already_seen' flag present, [2]: number of instances where 'already_seen' flag is not present (ie number of instances the already_seen flag is decided a priori to be False), [3]: number of instances where the values for 'already_seen' and 'seen_before' differ (when both present), in which case already_seen is assumed to be True.")
+      print("To revert to Fridays graph, remove already_seen_i=True from case where two flags differ")
+      print("For plotting Dec graph, have changed 1) config file db name, 2) config file gold file paths 3) run.py gold file paths 4) run.py test_caesar/online call function 5) kswap_plots database path")
+      print('Instance Counts: [Both, AS only, !AS, Dif]' + str(self.instance_counts))
 #***Why is there an try/except function here? Surely need to do both simultaneously?***
 #Original:
 #    try:
@@ -571,6 +574,9 @@ class SWAP(object):
         user_id = int(item['user'])
       except ValueError:
         user_id = item['user']
+      except TypeError:
+        print('User not logged on')
+        continue
       subject_id = int(item['subject'])
       subject_i = self.subjects[subject_id]
       classification_time=item['classification_time']
@@ -641,9 +647,9 @@ class SWAP(object):
         retire_list_Nclass=self.retire_classification_count(subject_batch)
         logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+' subjects: ' +\
                                    str(set(np.array(retire_list_thres+retire_list_Nclass))))
-        retired_list = self.retrieve_list(self.config.retired_items_path)
-        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
-        self.save_list(retired_list,self.config.retired_items_path)
+#        retired_list = self.retrieve_list(self.config.retired_items_path)
+#        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+#        self.save_list(retired_list,self.config.retired_items_path)
         st=time.time()
         self.send_panoptes(retire_list_thres,'consensus')
         self.send_panoptes(retire_list_Nclass,'classification_count')
@@ -660,9 +666,9 @@ class SWAP(object):
       retire_list_Nclass=self.retire_classification_count(subject_batch)
       logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects: ' +\
                                  str(set(np.array(retire_list_thres+retire_list_Nclass))))
-      retired_list = self.retrieve_list(self.config.retired_items_path)
-      retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
-      self.save_list(retired_list,self.config.retired_items_path)
+#      retired_list = self.retrieve_list(self.config.retired_items_path)
+#      retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+#      self.save_list(retired_list,self.config.retired_items_path)
       self.send_panoptes(retire_list_thres,'consensus')
       self.send_panoptes(retire_list_Nclass,'classification_count')
       with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
@@ -675,9 +681,9 @@ class SWAP(object):
     st=time.time()
     logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
     logging.info('To retire: ' + str(set(np.array(retire_list_thres+retire_list_Nclass))))
-    retired_list = self.retrieve_list(self.config.retired_items_path)
-    retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
-    self.save_list(retired_list,self.config.retired_items_path)
+#    retired_list = self.retrieve_list(self.config.retired_items_path)
+#    retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+#    self.save_list(retired_list,self.config.retired_items_path)
     self.send_panoptes(retire_list_thres,'consensus')
     self.send_panoptes(retire_list_Nclass,'classification_count')
     self.save()
@@ -785,7 +791,7 @@ class SWAP(object):
 #First Beta Test:
 #subject_id_set=[71364867,71364863,71364858,71364853,71365254,71365236,71365216,71365187,71365177,71365453,71365446,71365440,71365431,71365424,71365418,71365408,71365396,71365385,71365379,71365370,71365360,71365346,71365337,71365331,71365325,71365313,71365307,71365302,71365292]
 #Jan Beta Test:
-    subject_id_set=[71700294 ,71700293 ,71700292 ,71700291 ,71700299 ,71700298 ,71700297 ,71700296 ,71700295 ,71700319 ,71700318 ,71700317 ,71700316 ,71700315 ,71700314 ,71700313 ,71700312 ,71700311 ,71700310 ,71700309 ,71700308 ,71700307 ,71700306 ,71700305 ,71700304 ,71700303 ,71700302 ,71700301 ,71700300]
+#    subject_id_set=[71700294 ,71700293 ,71700292 ,71700291 ,71700299 ,71700298 ,71700297 ,71700296 ,71700295 ,71700319 ,71700318 ,71700317 ,71700316 ,71700315 ,71700314 ,71700313 ,71700312 ,71700311 ,71700310 ,71700309 ,71700308 ,71700307 ,71700306 ,71700305 ,71700304 ,71700303 ,71700302 ,71700301 ,71700300]
 #    with open('/Users/hollowayp/Downloads/space-warps-des-subjects-4.csv') as csvfile:
 #        reader = csv.DictReader(csvfile)
 #        for i,row in enumerate(reader):
