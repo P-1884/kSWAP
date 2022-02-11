@@ -433,7 +433,7 @@ class SWAP(object):
   def send_panoptes(self, subject_batch,reason):
     subjects = []
     try:
-        with Pool() as pool:
+        with Pool(4) as pool:
           subjects = pool.map(find_subjects, subject_batch)
     #    for subject_id in subject_batch:
     #      subjects.append(PanoptesSubject().find(subject_id))
@@ -690,6 +690,7 @@ class SWAP(object):
     process_time_array_y = [[],[],[],[],[],[],[],[],[],[],[]]
     try:
       while True:
+        ST_time = time.time()
         haveItems, subject_batch,q,q_all,keyerror_1_i,keyerror_2_i,N_proc,time_proc = self.caesar_recieve(ce)
 #        process_time_array_x[N_proc]+=1
 #        process_time_array_y[N_proc].append(time_proc)
@@ -716,7 +717,7 @@ class SWAP(object):
 #        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
 #        self.save_list(retired_list,self.config.retired_items_path)
         st=time.time()
-        self.send_panoptes(retire_list_thres,'consensus')
+#        self.send_panoptes(retire_list_thres,'consensus')
         self.send_panoptes(retire_list_Nclass,'classification_count')
         self.save()
         et=time.time()
@@ -736,6 +737,8 @@ class SWAP(object):
         with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
           f.write(str(aws_list))
         print('')
+        ED_time = time.time()
+        print('Total loop time per subject:' + str((ED_time-ST_time)/np.max([N_proc,1])) +' for ' + str(N_proc) + ' classifications')
     except KeyboardInterrupt as e:
 #      print(retirement_time_array_x,[np.median(retirement_time_array_y[i]) for i in range(len(retirement_time_array_y))],[np.mean(retirement_time_array_y[i]) for i in range(len(retirement_time_array_y))])
       st_1 = time.time()
