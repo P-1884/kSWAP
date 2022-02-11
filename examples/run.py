@@ -3,27 +3,13 @@ sys.path.insert(0, '../kswap')
 from swap import SWAP
 from kswap import kSWAP
 
-#Loads the data from the databases, adds the golds to the subject class and applies these, processes classifications from the csv and updates the databases.
-#I think this is redundant/duplication if using test_offline/online functions below?
-def test_initialise():
-  from config import Config
-  swap = SWAP(config=Config())
-  swap = swap.load()
-  swap.get_golds('./data/golds.csv')
-  swap.apply_golds('./data/swhsc-6605-classification_060518_0317.csv')
-  swap.process_classifications_from_csv_dump('./data/swhsc-6605-classification_060518_0317.csv')
-  swap.save()
-  del swap
-  swap = SWAP(config=Config())
-  swap = swap.load()
-
 #Loads data from databases, get/apply golds then processes classification from csv then updates the databases.
 def test_offline():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load() #ie any previous user/subject details (otherwise gives default values to user/subject).
   swap.run_offline(Config().golds_path,
-                   './data/swhsc-6605-classification_060518_0317.csv')
+                   './data/swhsc-6605-classification_060518_0317.csv',Config().hard_sims_path)
   swap.save()
   del swap
   swap = SWAP(config=Config())
@@ -34,7 +20,7 @@ def test_online():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_online('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/dec_beta_golds_file.csv','./data/Dec_21_test_classifications.csv')
+  swap.run_online('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/dec_beta_golds_file.csv','./data/Dec_21_test_classifications.csv',Config().hard_sims_path)
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/alpha_test_classifications_cropped.csv
   swap.save()
@@ -46,7 +32,7 @@ def test_caesar():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_caesar(Config().golds_path)
+  swap.run_caesar(Config().golds_path,Config().hard_sims_path)
   swap.save()
   del swap
   swap = SWAP(config=Config())
@@ -97,8 +83,6 @@ def compare_offline_and_online_user_scores(user_id):
 def main():
 
   ### SWAP tests
-#  print('1: Initialise')
-#  test_initialise()
 #  print('2: Offline')
 #  test_offline()
   print('Starting Iteration')
