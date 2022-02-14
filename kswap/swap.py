@@ -663,12 +663,12 @@ class SWAP(object):
             logging.info('time taken = ' + str(et-st)+ ' for ' + str(q) + ' classifications, ' + str((et-st)/q) + 's/cl')
         else:
             logging.info('time taken = ' + str(et-st)+ ' for ' + str(q) + ' classifications.')
-        return haveItems, subject_batch,q,q_all,keyerror_1_i,keyerror_2_i, q_all, (et-st)/np.max([1,q_all])
-    except KeyError as e:
+        return haveItems, subject_batch,q,q_all,keyerror_1_i,keyerror_2_i, q_all
+    except exception as ex:
         print('KEYERROR_2 HERE')
-        print(e)
+        print(ex)
         keyerror_2_i+=1
-        return False, [], 0,0,keyerror_1_i,keyerror_2_i
+        return False, [], 0,0,keyerror_1_i,keyerror_2_i,0
     
 
   def process_classifications_from_caesar(self, caesar_config_name):
@@ -691,7 +691,7 @@ class SWAP(object):
     try:
       while True:
         ST_time = time.time()
-        haveItems, subject_batch,q,q_all,keyerror_1_i,keyerror_2_i,N_proc,time_proc = self.caesar_recieve(ce)
+        haveItems, subject_batch,q,q_all,keyerror_1_i,keyerror_2_i,N_proc = self.caesar_recieve(ce)
 #        process_time_array_x[N_proc]+=1
 #        process_time_array_y[N_proc].append(time_proc)
 #aws_list[q] = Number of times a retrieval has been made containing q messages.
