@@ -685,7 +685,7 @@ class SWAP(object):
     print('       5) Adjust config file to change retirement thresholds before running, and can change file paths here as needed ')
     retirement_time_array_x = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
     retirement_time_array_y = [[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]]
-    test_retirement_list = []
+#    test_retirement_list = []
     process_time_array_x = [0,0,0,0,0,0,0,0,0,0,0]
     process_time_array_y = [[],[],[],[],[],[],[],[],[],[],[]]
     try:
@@ -711,22 +711,24 @@ class SWAP(object):
           print(aws_list)
         retire_list_thres=self.retire(subject_batch)
         retire_list_Nclass=self.retire_classification_count(subject_batch)
-        logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+' subjects: ' +\
-                                   str(set(np.array(retire_list_thres+retire_list_Nclass))))
+        retire_batch = list(set(np.array(retire_list_thres+retire_list_Nclass)))
+        logging.info('Retiring ' + str(len(retire_batch))+' subjects: ' +\
+                                   str(retire_batch))
 #        retired_list = self.retrieve_list(self.config.retired_items_path)
 #        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
 #        self.save_list(retired_list,self.config.retired_items_path)
-        st=time.time()
+        ST_retirement=time.time()
 #        self.send_panoptes(retire_list_thres,'consensus')
-        self.send_panoptes(retire_list_Nclass,'classification_count')
+#        self.send_panoptes(retire_list_Nclass,'classification_count')
+        self.send_panoptes(retire_batch,'consensus')
         self.save()
-        et=time.time()
-        logging.info('retirement time: ' + str(et-st))
-        #Number retired may include double counting as subjects can be retired by both consensus or classification_count, but use this as want total number of subjects sent for retirement.
-        number_retired = int(len(set(np.array(retire_list_thres)))+len(set(np.array(retire_list_Nclass))))
+        ED_retirement=time.time()
+        logging.info('Retirement time: ' + str((ED_retirement-ST_retirement)/np.max([1,len()])) + 'for ' +  str(len(retire_batch)) + ' retirements')
+#        #Number retired may include double counting as subjects can be retired by both consensus or classification_count, but use this as want total number of subjects sent for retirement.
+#        number_retired = int(len(set(np.array(retire_list_thres)))+len(set(np.array(retire_list_Nclass))))
 #        retirement_time_array_x[number_retired]+=1
 #        retirement_time_array_y[number_retired].append(et-st)
-        test_retirement_list.extend(retire_list_thres+retire_list_Nclass)
+#        test_retirement_list.extend(retire_list_thres+retire_list_Nclass)
         if keyerror_1_i != 0 or keyerror_2_i !=0:
             with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'r') as g:
               keyerror_list=eval(g.read())
@@ -741,17 +743,18 @@ class SWAP(object):
         print('Total loop time per subject:' + str((ED_time-ST_time)/np.max([N_proc,1])) +' for ' + str(N_proc) + ' classifications')
     except KeyboardInterrupt as e:
 #      print(retirement_time_array_x,[np.median(retirement_time_array_y[i]) for i in range(len(retirement_time_array_y))],[np.mean(retirement_time_array_y[i]) for i in range(len(retirement_time_array_y))])
-      st_1 = time.time()
-      self.send_panoptes(list(set(np.array(test_retirement_list))),'classification_count')
-      print('Retirement time: ' + str(time.time()-st_1))
-      print('... for ' + str(len(list(set(np.array(test_retirement_list))))) + 'subjects')
+#      st_1 = time.time()
+#      self.send_panoptes(list(set(np.array(test_retirement_list))),'classification_count')
+#      print('Retirement time: ' + str(time.time()-st_1))
+#      print('... for ' + str(len(list(set(np.array(test_retirement_list))))) + 'subjects')
 ###Retirements:
       retire_list_thres=self.retire(subject_batch)
       retire_list_Nclass=self.retire_classification_count(subject_batch)
-      logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects: ' +\
-                                 str(set(np.array(retire_list_thres+retire_list_Nclass))))
-      self.send_panoptes(retire_list_thres,'consensus')
-      self.send_panoptes(retire_list_Nclass,'classification_count')
+      retire_batch = list(set(np.array(retire_list_thres+retire_list_Nclass)))
+      logging.info('Retiring ' + str(len(retire_batch))+ ' subjects: ' + str(retire_batch))
+#      self.send_panoptes(retire_list_thres,'consensus')
+#      self.send_panoptes(retire_list_Nclass,'classification_count')
+      self.send_panoptes(retire_batch,'consensus')
       try:
         with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
           f.write(str(aws_list))
@@ -767,8 +770,9 @@ class SWAP(object):
     st=time.time()
     logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
     logging.info('To retire: ' + str(set(np.array(retire_list_thres+retire_list_Nclass))))
-    self.send_panoptes(retire_list_thres,'consensus')
-    self.send_panoptes(retire_list_Nclass,'classification_count')
+#    self.send_panoptes(retire_list_thres,'consensus')
+#    self.send_panoptes(retire_list_Nclass,'classification_count')
+    self.send_panoptes(list(set(np.array(retire_list_thres+retire_list_Nclass))),'consensus')
     self.save()
     with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
       f.write(str(aws_list))
