@@ -723,7 +723,7 @@ class SWAP(object):
         self.send_panoptes(retire_batch,'consensus')
         self.save()
         ED_retirement=time.time()
-        logging.info('Retirement time: ' + str((ED_retirement-ST_retirement)/np.max([1,len()])) + 'for ' +  str(len(retire_batch)) + ' retirements')
+        logging.info('Retirement time: ' + str((ED_retirement-ST_retirement)/np.max([1,len(retire_batch)])) + 'for ' +  str(len(retire_batch)) + ' retirements')
 #        #Number retired may include double counting as subjects can be retired by both consensus or classification_count, but use this as want total number of subjects sent for retirement.
 #        number_retired = int(len(set(np.array(retire_list_thres)))+len(set(np.array(retire_list_Nclass))))
 #        retirement_time_array_x[number_retired]+=1
