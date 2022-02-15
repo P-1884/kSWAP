@@ -76,12 +76,15 @@ def efficiency_calc(path='./data/swap.db'):
         should_be_retired_list.append(i)
     subject_ids_which_should_be_retired=(np.array(pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id'])[np.array(should_be_retired_list)])
     final_classification_time={}
+    penultimate_classification_time={}
     final_classification_user={}
     fraction_of_total_user_classifications={}
+    delta_time_dict = {}
     for p in should_be_retired_list:
         subj_hist=eval(subject_histories[p])
         subj_id =pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id'][p]
         final_classification_time[subj_id]= subj_hist[len(subj_hist)-1][5]
+        penultimate_classification_time[subj_id] = subj_hist[len(subj_hist)-2][5]
     for s in range(len(user_table)):
         subjects_seen_by_user=[]
         user_history=eval(pd.DataFrame.from_dict(read_sqlite(path)['users'])['history'][s])
@@ -94,12 +97,14 @@ def efficiency_calc(path='./data/swap.db'):
                 assert subject_ids_which_should_be_retired[r] not in final_classification_user
                 final_classification_user[subject_ids_which_should_be_retired[r]]=pd.DataFrame.from_dict(read_sqlite(path)['users'])['user_id'][s]
                 user_dict_key = 'user_indx: '+str(s)+' total: ' + str(len(subjects_seen_by_user))
+                user_dict_key_2 = str(str(len(subjects_seen_by_user)))+ '/'+str(len(subjects_seen_by_user))
                 if user_dict_key in fraction_of_total_user_classifications:
-                  fraction_of_total_user_classifications[user_dict_key].append(indx_of_classification)
+                  fraction_of_total_user_classifications[user_dict_key].append(str(len(subjects_seen_by_user)))
+                  delta_time_dict[user_dict_key_2].append(final_classification_time[
                 else:
                   fraction_of_total_user_classifications[user_dict_key] = [indx_of_classification]
     print('Wasted classifications: ' + str(inefficiency_count))
-#    print(fraction_of_total_user_classifications)
+    print(fraction_of_total_user_classifications)
 #    print(check)
     return should_be_retired_list
 #(efficiency_calc('./data/swap_bFINAL_hardsimsaretest_excludenotloggedon.db'))
