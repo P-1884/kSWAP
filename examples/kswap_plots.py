@@ -97,12 +97,13 @@ def efficiency_calc(path='./data/swap.db'):
                 assert subject_ids_which_should_be_retired[r] not in final_classification_user
                 final_classification_user[subject_ids_which_should_be_retired[r]]=pd.DataFrame.from_dict(read_sqlite(path)['users'])['user_id'][s]
                 user_dict_key = 'user_indx: '+str(s)+' total: ' + str(len(subjects_seen_by_user))
-                user_dict_key_2 = str(str(len(subjects_seen_by_user)))+ '/'+str(len(subjects_seen_by_user))
+                user_dict_key_2 = str(indx_of_classification)+ '/'+str(len(subjects_seen_by_user))
                 if user_dict_key in fraction_of_total_user_classifications:
-                  fraction_of_total_user_classifications[user_dict_key].append(str(len(subjects_seen_by_user)))
-                  delta_time_dict[user_dict_key_2].append(final_classification_time[
+                  fraction_of_total_user_classifications[user_dict_key].append(indx_of_classification)
+                  delta_time_dict[user_dict_key_2].append(final_classification_time[subject_ids_which_should_be_retired[r]]-penultimate_classification_time[subject_ids_which_should_be_retired[r]])
                 else:
                   fraction_of_total_user_classifications[user_dict_key] = [indx_of_classification]
+                  delta_time_dict[user_dict_key_2]= final_classification_time[subject_ids_which_should_be_retired[r]]-penultimate_classification_time[subject_ids_which_should_be_retired[r]]
     print('Wasted classifications: ' + str(inefficiency_count))
     print(fraction_of_total_user_classifications)
 #    print(check)
