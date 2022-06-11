@@ -1,10 +1,23 @@
-import sys
-import pandas as pd
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as pl
+import multiprocess as mp
+import matplotlib as mpl
+import pandas as pd
 import numpy as np
 import datetime
+import sqlite3
+import time
+import csv
+import sys
+from pandas import read_sql_query, read_sql_table
+from scipy.optimize import curve_fit as cf
+from collections import Counter
+from scipy import interpolate
+from matplotlib import cm
+from tqdm import tqdm
+
 sys.path.append('/Users/hollowayp/Documents/GitHub/kSWAP/kswap')
+
 def thresholds_setting():
     from config import Config as config_0
     sys.path.insert(0, '../kswap')
@@ -22,34 +35,33 @@ def printer(q,N):
         print(str(10*p)+'%')
 
 def read_sqlite(dbfile):
-    import sqlite3
-    from pandas import read_sql_query, read_sql_table
     with sqlite3.connect(dbfile) as dbcon:
       tables = list(read_sql_query("SELECT name FROM sqlite_master WHERE type='table';", dbcon)['name'])
       out = {tbl : read_sql_query(f"SELECT * from {tbl}", dbcon) for tbl in tables}
     return out
 
-def date_time_convert(self, row_created_at):
+def date_time_convert(row_created_at):
   s_i=[]
   for s in range(len(row_created_at)):
     if row_created_at[s]=='-' or row_created_at[s]==':':
       s_i.append(s)
-  dt_i = datetime(int(row_created_at[0:s_i[0]]), int(row_created_at[s_i[0]+1:s_i[1]]), int(row_created_at[s_i[1]+1:s_i[1]+3]),int(row_created_at[s_i[2]-2:s_i[2]]), int(row_created_at[s_i[2]+1:s_i[3]])).timestamp()
+  dt_i = datetime.datetime(int(row_created_at[0:s_i[0]]), int(row_created_at[s_i[0]+1:s_i[1]]), int(row_created_at[s_i[1]+1:s_i[1]+3]),int(row_created_at[s_i[2]-2:s_i[2]]), int(row_created_at[s_i[2]+1:s_i[3]])).timestamp()
   return dt_i
 
 def efficiency_calc(path='./data/swap.db'):
+#NB THIS USES THE CURRENT CONFIG THRESHOLDS IE WHATEVER THEY ARE SET TO NOW, NOT WHAT THEY WERE WHEN DATABASE WAS MADE:
     from config import Config as config_0
     p_retire_lower=config_0().thresholds[0]
     p_retire_upper=config_0().thresholds[1]
     lower_retirement_limit=config_0().lower_retirement_limit
     retirement_limit=config_0().retirement_limit
-#    print(pd.DataFrame.from_dict(read_sqlite(path)['subjects']))
     user_table=pd.DataFrame.from_dict(read_sqlite(path)['users'])['history']
     subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
     subject_golds=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label']
+    
     inefficiency_count=0
     should_be_retired_list=[]
-    for i in range(len(subject_histories)):
+    for i in tqdm(range(len(subject_histories))):
       inefficiency_count_i=0
       history_scores=[]
       for j in range(len(eval(subject_histories[i]))):
@@ -62,6 +74,7 @@ def efficiency_calc(path='./data/swap.db'):
       if (history_scores<p_retire_lower).any() and subject_golds[i]==-1:
         if np.where(history_scores<p_retire_lower)[0][0]!=len(history_scores)-1:
           if np.sum((history_scores<p_retire_lower)*[1 if i >= lower_retirement_limit else 0 for i in range(len(history_scores))])>=2:
+#Think this line below should really be np.sum(np.array([1 if j >= np.where(history_scores<p_retire_lower)[0][0] else 0 for j in range(len(history_scores)))])*[1 if i >= lower_retirement_limit else 0 for i in range(len(history_scores))] >=2 - the current code will underestimate the number of should-be-retired's.
             inefficiency_count_i_a=np.sum((history_scores<p_retire_lower)*[1 if i >= lower_retirement_limit else 0 for i in range(len(history_scores))])-1
 #Repeating for the other threshold:
       if (history_scores>p_retire_upper).any() and subject_golds[i]==-1:
@@ -77,15 +90,16 @@ def efficiency_calc(path='./data/swap.db'):
     subject_ids_which_should_be_retired=(np.array(pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id'])[np.array(should_be_retired_list)])
     final_classification_time={}
     penultimate_classification_time={}
+#Final classification user is a dictionary of all the subjects, and which users made their final classification.
     final_classification_user={}
     fraction_of_total_user_classifications={}
     delta_time_dict = {}
     for p in should_be_retired_list:
         subj_hist=eval(subject_histories[p])
         subj_id =pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id'][p]
-        final_classification_time[subj_id]= subj_hist[len(subj_hist)-1][5]
-        penultimate_classification_time[subj_id] = subj_hist[len(subj_hist)-2][5]
-    for s in range(len(user_table)):
+        final_classification_time[subj_id]= (subj_hist[len(subj_hist)-1][5])
+        penultimate_classification_time[subj_id] = (subj_hist[len(subj_hist)-2][5])
+    for s in tqdm(range(len(user_table))):
         subjects_seen_by_user=[]
         user_history=eval(pd.DataFrame.from_dict(read_sqlite(path)['users'])['history'][s])
         for q in range(len(user_history)):
@@ -95,25 +109,43 @@ def efficiency_calc(path='./data/swap.db'):
               indx_of_classification=subjects_seen_by_user.index(subject_ids_which_should_be_retired[r])
               if user_history[indx_of_classification][3]==final_classification_time[subject_ids_which_should_be_retired[r]]:
                 assert subject_ids_which_should_be_retired[r] not in final_classification_user
+                assert pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['retired'][should_be_retired_list[r]]==1
                 final_classification_user[subject_ids_which_should_be_retired[r]]=pd.DataFrame.from_dict(read_sqlite(path)['users'])['user_id'][s]
                 user_dict_key = 'user_indx: '+str(s)+' total: ' + str(len(subjects_seen_by_user))
-                user_dict_key_2 = str(indx_of_classification)+ '/'+str(len(subjects_seen_by_user))
                 if user_dict_key in fraction_of_total_user_classifications:
                   fraction_of_total_user_classifications[user_dict_key].append(indx_of_classification)
-                  delta_time_dict[user_dict_key_2].append(final_classification_time[subject_ids_which_should_be_retired[r]]-penultimate_classification_time[subject_ids_which_should_be_retired[r]])
+                  delta_time_dict[user_dict_key].append(('i:'+str(indx_of_classification),str(int((date_time_convert(final_classification_time[subject_ids_which_should_be_retired[r]])-date_time_convert(penultimate_classification_time[subject_ids_which_should_be_retired[r]]))/60))+'m'))
                 else:
                   fraction_of_total_user_classifications[user_dict_key] = [indx_of_classification]
-                  delta_time_dict[user_dict_key_2]= final_classification_time[subject_ids_which_should_be_retired[r]]-penultimate_classification_time[subject_ids_which_should_be_retired[r]]
+                  delta_time_dict[user_dict_key]=[('i:'+str(indx_of_classification),str(int((date_time_convert(final_classification_time[subject_ids_which_should_be_retired[r]])-date_time_convert(penultimate_classification_time[subject_ids_which_should_be_retired[r]]))/60))+'m')]
     print('Wasted classifications: ' + str(inefficiency_count))
-    print(fraction_of_total_user_classifications)
-#    print(check)
+    print('Total retired so far: '+ str(np.sum(pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['retired'])))
+#This function looks at the *final* classification made to each subject (and who made it). It looks at the time that final classification was made, and the time of the previous classification.
+#It then looks at how many classifications the user had made by the time they made this final classification, as a proportion of the total number of classifications made.
+#By looking at consecutive time-steps of the swap.db backups (eg the first few), can show people were shown retired subjects even when there were plenty of others to chose from.
+    print('Time (minutes) since previous classification, and number of classifications made so far by that user')
+    for i in range(len(delta_time_dict.keys())):
+       indx_of_classification_list = []
+       user_tuples = delta_time_dict[list(delta_time_dict.keys())[i]]
+       tuple_1 = [];tuple_2 = []
+       for j in range(len(user_tuples)):
+         try:
+           tuple_1.append(int(user_tuples[j][0][2:]))
+         except:
+           print(user_tuples[j][0])
+         tuple_2.append(user_tuples[j][1])
+       tuple_1_copy = tuple_1.copy()
+       #Must only sorting the copy of tuple_1:
+       tuple_1_copy.sort()
+       sorted_tuples = [('i:' + str(tuple_1_copy[k]),[x for _, x in sorted(zip(tuple_1, tuple_2))][k]) for k in range(len(user_tuples))]
+       print(list(delta_time_dict.keys())[i],sorted_tuples)
     return should_be_retired_list
 #(efficiency_calc('./data/swap_bFINAL_hardsimsaretest_excludenotloggedon.db'))
 #(efficiency_calc('./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db'))
 #(efficiency_calc('./data/swap_bFINAL_simul_AWS.db'))
+#efficiency_calc(path = '/Users/hollowayp/Documents/swap beta25 backup2.db')
+#efficiency_calc(path = '/Users/hollowayp/Documents/swap beta25 backup4.db')
 
-from tqdm import tqdm
-import matplotlib as mpl
 
 def user_class_hist(path='./data/swap.db'):
     user_history=pd.DataFrame.from_dict(read_sqlite(path)['users'])['history']
@@ -156,12 +188,21 @@ def expected_training_fraction_func(X):
         V.append(((16/3)+(0.2*25)+((X_i-16-25)/10))/X_i)
     return np.array(V)
 
+def random_training_trial():
+    training_seen = []
+    for i in range(1,500):
+        if i<=16:
+          training_seen.append(np.random.choice([0,1],p=[2/3,1/3]))
+        elif 16<i and i<=16+25:
+          training_seen.append(np.random.choice([0,1],p=[4/5,1/5]))
+        else:
+          training_seen.append(np.random.choice([0,1],p=[9/10,1/10]))
+    cumul_freq = np.cumsum(training_seen)/np.arange(1,500)
+    return cumul_freq
+
 def gold_frequency(path):
     user_table=pd.DataFrame.from_dict(read_sqlite(path)['users'])['history']
-    print(eval(user_table[0])[0:5])
-#    user_score=list(pd.DataFrame.from_dict(read_sqlite(path)['users'])['user_score'])
-#    user_score=[eval(user_score[i]) for i in range(len(user_score))]
-#    user_score=[(user_score[i]["0"]**2+user_score[i]["1"]**2)**0.5 for i in range(len(user_score))]
+    user_id = pd.DataFrame.from_dict(read_sqlite(path)['users'])['user_id']
     subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
     subject_ids=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id']
     subject_golds=np.array(pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label'])
@@ -169,17 +210,23 @@ def gold_frequency(path):
 #    time_first_classification=[]
 #    for s in range(len(user_table)):
 #      time_first_classification.append(eval(user_table[s])[1][2])
-    min_time=eval(user_table[0])[1][2]
+    min_time=date_time_convert(eval(user_table[0])[1][3])
     max_time=0
-    for x in tqdm(range(len(user_table))):
-      for y in range(1,len(eval(user_table[x]))):
-        min_time= np.min([min_time,eval(user_table[x])[y][2]])
-        max_time=np.max([max_time,eval(user_table[x])[y][2]])
+#    for x in tqdm(range(0,len(user_table))):
+#      for y in range(1,len(eval(user_table[x]))):
+#        min_time= np.min([min_time,date_time_convert(eval(user_table[x])[y][3])])
+#        max_time=np.max([max_time,date_time_convert(eval(user_table[x])[y][3])])
+#    max_time = 1643655438.761438; min_time = 1643125178.107527
+    max_time = 1643655420.0; min_time = 1643125140.0
+    print(min_time,max_time, max_time-min_time)
 #    user_score=(user_score-np.min(user_score))/(np.max(user_score)-np.min(user_score))
-    cmap = pl.cm.cool
-    pl.plot(np.arange(1,800),expected_training_fraction_func(np.arange(1,800)),c='k')
-    from matplotlib import cm
-    N_less = np.zeros(50);N_more = np.zeros(50)
+    fig, ax = pl.subplots(1,2,figsize=(28,8))
+    #time cutoff in seconds (currently 12hr):
+    time_cutoff = 5*60*60/(max_time-min_time)
+    #classification cutoff for plot below:
+    c_cutoff = 200
+    N_less = np.zeros(c_cutoff);N_more = np.zeros(c_cutoff)
+    N_many_classifications=0
     for i in tqdm(range(0,len(user_table))):
       x_i = [];y_i = [];t_i = []
 #Has to start at 1 as the zeroth index is the prior:
@@ -187,43 +234,64 @@ def gold_frequency(path):
         if j ==1:
             if eval(user_table[i])[j][0] in gold_ids:
               y_i.append(1)
-              x_i.append(j)
-              t_i.append(eval(user_table[i])[j][2])
             else:
               y_i.append(0)
-              x_i.append(j)
-              t_i.append(eval(user_table[i])[j][2])
+            x_i.append(j)
+            t_i.append(date_time_convert(eval(user_table[i])[j][3]))
         else:
             if eval(user_table[i])[j][0] in gold_ids:
               y_i.append(y_i[len(y_i)-1]+1)
-              x_i.append(j)
-              t_i.append(eval(user_table[i])[j][2])
             else:
               y_i.append(y_i[len(y_i)-1])
-              x_i.append(j)
-              t_i.append(eval(user_table[i])[j][2])
+            x_i.append(j)
+            t_i.append(date_time_convert(eval(user_table[i])[j][3]))
       x_i = np.array(x_i)
       y_i = np.array(y_i)/x_i
       t_i = np.array(t_i)
       t_i = (t_i-min_time)/(max_time-min_time)
-      pl.scatter(x_i,y_i, c=cm.cool(t_i), edgecolor='none',s=15,alpha=1)
-      pl.plot(x_i,y_i, color='gray',alpha=0.3)
-#      pl.plot(x_i,y_i,c=cmap.to_rgba(t_i))
-      if len(x_i)>50:
-        N_more += (y_i[0:50]>expected_training_fraction_func(np.arange(1,51))).astype('int')
-        N_less += (y_i[0:50]<expected_training_fraction_func(np.arange(1,51))).astype('int')
+      ax[0].scatter(x_i[t_i<time_cutoff],y_i[t_i<time_cutoff], c=cm.cool(t_i[t_i<time_cutoff]), edgecolor='none',s=15,alpha=1)
+      ax[0].plot(x_i[t_i<time_cutoff],y_i[t_i<time_cutoff], color='gray',alpha=0.3)
+      if True:
+        c_cutoff_i = np.min([c_cutoff,len(y_i)])
+        N_many_classifications +=1
+        N_more[0:c_cutoff_i] += ((y_i[0:c_cutoff]>expected_training_fraction_func(np.arange(1,1+c_cutoff_i)))*(t_i[0:c_cutoff]<time_cutoff)).astype('int')
+        N_less[0:c_cutoff_i] += ((y_i[0:c_cutoff]<expected_training_fraction_func(np.arange(1,1+c_cutoff_i)))*(t_i[0:c_cutoff]<time_cutoff)).astype('int')
+    More_less_ratio = N_more/N_less
+    for f in range(len(user_table)):
+        ax[1].plot(np.arange(1,c_cutoff+1),random_training_trial()[0:c_cutoff],alpha=0.2,c='g')
     norm = pl.Normalize(0, 1)
+    cmap = pl.cm.cool
     sm = pl.cm.ScalarMappable(norm=norm, cmap=cmap)
-    cbar = pl.colorbar(sm, ax=None, orientation='vertical')
-    pl.xlabel('Number of classifications made by user')
-    pl.ylabel('Running fraction of classifications made which are golds')
+    cbar = pl.colorbar(sm, ax=ax[0], orientation='vertical')
+    cbar = pl.colorbar(sm, ax=ax[1], orientation='vertical')
+    for i in range(2):
+        ax[i].plot(np.arange(1,800),expected_training_fraction_func(np.arange(1,800)),c='k')
+        ax[i].set_xlabel('Number of classifications made by user')
+        ax[i].set_ylabel('Running fraction of classifications made which are golds')
+        ax[i].set_xlim(0,200)
+        ax[i].set_ylim(0,0.8)
     pl.show()
-    pl.plot(N_more)
-    pl.plot(N_less)
-    pl.legend(['More','Less'])
+#    for r in range(N_many_classifications):
+    pl.plot(More_less_ratio,c='b')
+    for t in range(10):
+        N_less_ideal = np.zeros(c_cutoff);N_more_ideal = np.zeros(c_cutoff)
+        for r in range(1000):
+        #The oscillations are from the ideal line crossing the thick 'main lines' on the plot (ie the lines where a user doesnt see training images for a long period).
+        #This is why the oscillations get slower (the thick lines start off steep then flatten out, hence the ideal line takes longer to cross the later ones)
+            random_trial = random_training_trial()
+            N_more_ideal += (random_trial[0:c_cutoff]>expected_training_fraction_func(np.arange(1,1+c_cutoff))).astype('int')
+            N_less_ideal += (random_trial[0:c_cutoff]<expected_training_fraction_func(np.arange(1,1+c_cutoff))).astype('int')
+        More_less_ratio_ideal = N_more_ideal/N_less_ideal
+        pl.plot(More_less_ratio_ideal,'--',c='b',alpha=0.3)
+    pl.xlabel('Number of classifications made by user')
+    pl.ylabel('Ratio of N. seen over/under set abundance')
+    pl.legend(['M/L beta','M/L ideal'])
+    txt='Only considers classifications made in the first 12 hours (excluding not logged-in)'
+    pl.figtext(0.5, 0.01, txt, wrap=True, horizontalalignment='center', fontsize=12)
     pl.show()
 
 #gold_frequency('./data/swap_bFINAL_simul_AWS.db')
+#gold_frequency('./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db')
 #Just looking at first ~12 hours of beta test to see how many golds were shown in early stages. This is also better for colour of scatter points as they are less bunched up near early times (for a long run, most classifications were in the first day, but plotting with uniform time up to say ~7 days).
 #gold_frequency('/Users/hollowayp/Documents/swap beta25 backup3.db')
 
@@ -298,6 +366,7 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
     average_frac_dud, error_dud_lower,error_dud_upper = average_delta_user_score_func(frac_dud_array,error=True)
     print(error_dud_lower)
     ax[0,2].plot(average_frac_lens,'-.',color='k')
+    print(average_delta_user_score_func(frac_dud_array+frac_lens_array,error=True)[0])
     ax[1,2].plot(average_frac_dud,'-.',color='k')
     ax[0,2].errorbar(np.arange(len(average_frac_lens)),average_frac_lens,yerr = [error_lens_lower,error_lens_upper],color='k')
     ax[1,2].errorbar(np.arange(len(average_frac_dud)),average_frac_dud,yerr = [error_dud_lower,error_dud_upper],color='k')
@@ -360,7 +429,7 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
     ax[1,1].set_xlabel('Number of (Dud) training subjects seen')
     pl.show()
 
-#score_plots()
+score_plots()
 
 def scatter_hist(x, y, s, ax, ax_histx, ax_histy,not_logged_on=False):
     ax_histx.tick_params(axis="x", labelbottom=False)
@@ -400,7 +469,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
     histories_df = pd.DataFrame(subject_histories)
     subject_golds=list(pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label'])
     N_class = 0; N_class_hist = [];N_subj = 0
-    for i in range(len(subject_id)):
+    for i in tqdm(range(len(subject_id))):
       subj_i = eval(subject_histories[i])
       if subject_golds[i]==-1 and subj_i[len(subj_i)-1][3]<10**-5:
         N_subj+=1
@@ -416,7 +485,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
     user_score_matrices=users['user_score']
     user_confusion_matrices=users['confusion_matrix']
     hard_sims_ids_indx=[]
-    for f in range(len(subject_id)):
+    for f in tqdm(range(len(subject_id))):
       if subject_id[f] in hard_sims_ids:
         hard_sims_ids_indx.append(f)
     if len(subject_id)!=len(set(subject_id)):
@@ -435,7 +504,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
     history_all_final=[]
     golds_final=[]
     classification_time_final=[]
-    for indx in range(len(subject_id)):
+    for indx in tqdm(range(len(subject_id))):
         subject = subject_id[indx]
         subjects_final.append(subject)
         golds_final.append(subject_golds[indx])
@@ -479,12 +548,14 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
         alphas = [alpha_bogus, alpha_real, alpha_test]
 
         # axes and labels
-        p_min = 5e-8
+        p_min = 10**-10
         p_max = 1
         if timer==False:
             ax.set_xlim(p_min, p_max)
             ax.set_xscale('log')
             ax.set_ylim(max_seen+1,0)
+#            ax.set_ylim(31,0)
+            ax.set_xlim(10**-10,1)
             ax.axvline(x=prior_setting(), color=color_test, linestyle='dotted')
             ax.axvline(x=p_bogus, color=color_bogus, linestyle='dotted')
             ax.axvline(x=p_real, color=color_real, linestyle='dotted')
@@ -494,17 +565,16 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
             ax.set_ylabel('Number of Classifications',fontsize=5)
             sub_list=[]
             print(str(len(should_be_retired_list)) + ' subjects should have been retired but were subsequently classified')
-            for j in range(len(subjects)):
+            for j in range(0,len(subjects)):
+                if j in np.linspace(0,len(subjects)):
+                  print(j)
                 history = np.array(subjects_history_final[j])
                 y = np.arange(len(history) + 1)-1
                 history = np.append(prior_setting(), history)
-                if history[len(history)-1]<10**-2 and history[len(history)-1]>10**-3 and golds_final[j]==1:
-                  print(subjects[j],j)
-                if j not in should_be_retired_list:
-                    ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
-                    ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
-                    # add a point at the end
-                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+#                if j not in should_be_retired_list:
+#                    ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
+#                    ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
+#                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
                 if j in should_be_retired_list:
                   ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
                   ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,c='k')
@@ -535,7 +605,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
             sub_list=[]
 #            ax.set_yscale('log')
             #NB Truncating Here:
-            for j in range(len(subjects)):
+            for j in range(0,len(subjects)):
                 printer(j,len(subjects))
                 history = np.array(subjects_history_final[j])
                 y = classification_time_final[j]
@@ -586,18 +656,21 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
       pl.xlabel('Number of Classifications')
       pl.ylabel('N')
       pl.yscale('log')
+      pl.title(path)
       pl.legend(['Test','Dud','Lens'])
       pl.show()
       post_prob_bins=[[],[],[]]
       for j in range(len(posterior_prob_final)):
         if len(subjects_history_final[j])!=1:
           post_prob_bins[golds_final[j]+1].append(posterior_prob_final[j])
-      pl.hist(post_prob_bins[0],bins=np.logspace(np.log10(1e-8),np.log10(1.0), 20),stacked=False,edgecolor = 'grey',fill=False,density=True)
-      pl.hist(post_prob_bins[1],bins=np.logspace(np.log10(1e-8),np.log10(1.0), 20),stacked=False,edgecolor='red',fill=False,density=True)
-      pl.hist(post_prob_bins[2],bins=np.logspace(np.log10(1e-8),np.log10(1.0), 20),stacked=False,edgecolor='blue',fill=False,density=True)
+      print(post_prob_bins[1])
+      pl.hist(post_prob_bins[0],bins=np.logspace(np.log10(1e-20),np.log10(1.0), 50),stacked=False,edgecolor = 'grey',fill=False)
+      pl.hist(post_prob_bins[1],bins=np.logspace(np.log10(1e-20),np.log10(1.0), 50),stacked=False,edgecolor='red',fill=False)
+      pl.hist(post_prob_bins[2],bins=np.logspace(np.log10(1e-20),np.log10(1.0), 50),stacked=False,edgecolor='blue',fill=False)
       pl.legend(['Test','Training: Dud','Training: Lens'])
       pl.xlabel('Posterior Probability')
       pl.ylabel('N')
+      pl.title(path)
 #      pl.yscale('log')
       pl.xscale('log')
       pl.show()
@@ -662,12 +735,20 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
 #Online, training
 #should_be_retired_list= efficiency_calc('./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db')
 #trajectory_plot('./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db')
+#trajectory_plot('./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db')
+#trajectory_plot('./data/swap_bFINAL_hardsimsaretraining.db')
 #AWS swap
 #should_be_retired_list= efficiency_calc('./data/swap_bFINAL_simul_AWS.db')
 #should_be_retired_list=[]
 #trajectory_plot('./data/swap_bFINAL_simul_AWS.db')
 #trajectory_plot('/Users/hollowayp/Documents/swap beta25 backup2.db')
 #trajectory_plot('./data/swap_hsc_csv_online.db')
+#should_be_retired_list=efficiency_calc('/Users/hollowayp/Documents/swap beta25 backup2.db')
+#trajectory_plot('/Users/hollowayp/Documents/swap beta25 backup2.db')
+#should_be_retired_list=efficiency_calc('/Users/hollowayp/Documents/swap beta25 backup4.db')
+#trajectory_plot('/Users/hollowayp/Documents/swap beta25 backup4.db')
+#trajectory_plot('./data/swap_hsc_online_includeloggedon.db')
+#trajectory_plot('./data/swap_hsc_online_excludeloggedon.db')
 
 def plotting_user_score(path):
   users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
@@ -685,8 +766,7 @@ def plotting_user_score(path):
   ax_histx = fig.add_axes(rect_histx, sharex=ax)
   ax_histy = fig.add_axes(rect_histy, sharey=ax)
   N=0;Tot=0
-  import multiprocess as mp
-  import time
+
   def f(p):
      try:
          if pd.DataFrame.from_dict(read_sqlite(path)['users'])['user_id'][p][0:13]=='not-logged-in':
@@ -727,7 +807,7 @@ def plotting_user_score(path):
   ax[1].hist2d(x_L,y_L,bins=21,density=True,range=[[-0.025,1.025],[-0.025,1.025]],norm=mpl.colors.LogNorm())
   pl.show()
   
-plotting_user_score('./data/swap_hsc_csv_online.db')
+#plotting_user_score('./data/swap_hsc_online_excludeloggedon.db')
 
 
 def compare_swap_methods(db_path_1,db_path_2):
@@ -790,7 +870,6 @@ def identified_classes(path='./data/swap_bFINAL_simul_AWS.db',retired_as = 1):
 #identified_lenses()
 
 def neural_net_compare():
-    import csv
 #    lens_candidates = identified_classes(retired_as = 1)
 #    dud_candidates = identified_classes(retired_as = 0)
     subject_id_set=[]
@@ -856,7 +935,6 @@ def neural_net_compare():
 
 #neural_net_compare()
 
-from collections import Counter
 def majority_vote(sequence):
   occurence_count = Counter(sequence)
   return occurence_count.most_common(1)[0][0]
@@ -878,8 +956,405 @@ def show_databases(path):
     subjects = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])
     subject_golds=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])
     print(users)
-    print(list(subjects['seen'][0:110]))
-    print(list(subjects[(subjects['gold_label']!=0) & (subjects['score']>10**-5) ]['subject_id']))
 
-#show_databases('./data/swap_hardsimscode_demo.db')
-#show_databases('./data/swap_bFINAL_simul_AWS.db')
+#users=pd.DataFrame.from_dict(read_sqlite('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_test_db2.db')['users'])
+#show_databases('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_test_db2.db')
+#show_databases('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_hsc_online_includeloggedon.db')
+#show_databases('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_hsc_online_excludeloggedon.db')
+
+def Information_gained(path):
+    def delta_I(M_CL,M_CN,p,C):
+      M_CL = M_CL[C]
+      M_CN = M_CN[C]
+      p_c = p*M_CL + (1-p)*M_CN
+      if (p*M_CL/p_c)==0:
+        return (1-p)*(M_CN/p_c)*np.log2(M_CN/p_c)
+      elif (1-p)*(M_CN/p_c)==0:
+        return (p*M_CL/p_c)*np.log2(M_CL/p_c)
+      else:
+        return (p*M_CL/p_c)*np.log2(M_CL/p_c)+ (1-p)*(M_CN/p_c)*np.log2(M_CN/p_c)
+
+    def S(x):
+      if x==0:
+        return 0
+      else:
+        return x*np.log2(x)
+
+    def av_dI(M_CL,M_CN,p):
+      M_LL = M_CL[1]
+      M_NN = M_CN[0]
+      return p*(S(M_LL)+S(1-M_LL))\
+        + (1-p)*(S(M_NN)+S(1-M_NN))\
+        -S(p*(M_LL)+(1-p)*(1-M_NN))\
+        -S(p*(1-M_LL)+(1-p)*M_NN)
+    
+    user_table=pd.DataFrame.from_dict(read_sqlite(path)['users'])
+    print(user_table.columns)
+    print(eval(user_table['confusion_matrix'][0])['n_seen'])
+    Info =0;Info_list=[]
+    for i in tqdm(range(len(user_table))):
+#M_CL is p(C) given subject is a lens
+      try:
+        M_LL = eval(user_table['confusion_matrix'][i])['n_seen'][1]/eval(user_table['confusion_matrix'][i])['n_gold'][1]
+      except ZeroDivisionError:
+#        print(str(i)+ ', No lens golds seen')
+        M_LL = 0.5
+      M_NL = 1-M_LL
+      try:
+        M_NN = eval(user_table['confusion_matrix'][i])['n_seen'][0]/eval(user_table['confusion_matrix'][i])['n_gold'][0]
+      except ZeroDivisionError:
+#        print(str(i) + ', no dud golds seen')
+        M_NN = 0.5
+      M_LN = 1-M_NN
+#Use p = 0.5 here as want 'normalised' skill (see paper)
+      Info_list.append(av_dI([M_NL,M_LL],[M_NN,M_LN],0.5))
+      Info+=av_dI([M_NL,M_LL],[M_NN,M_LN],0.5)
+    print(Info)
+    Info_list = np.array(Info_list)
+    print(np.mean(Info_list))
+
+#Information_gained('./data/swap_bFINAL_simul_AWS.db')
+#Information_gained('./data/swap_hsc_csv_online.db')
+
+def compare_shuffled_swaps(db_path_0,db_path_shuffled_swaps):
+    subject_scores_0 = np.log10(np.array(pd.DataFrame.from_dict(read_sqlite(db_path_0)['subjects'])['score']).astype('float32'))
+    subject_subj_id_0= list(pd.DataFrame.from_dict(read_sqlite(db_path_0)['subjects'])['subject_id'])
+    fig, ax = pl.subplots(1,len(db_path_shuffled_swaps),figsize=(8*len(db_path_shuffled_swaps),7))
+    for f in range(len(db_path_shuffled_swaps)):
+      print(f)
+      subject_scores_i = np.log10(np.array(pd.DataFrame.from_dict(read_sqlite(db_path_shuffled_swaps[f])['subjects'])['score']).astype('float32'))
+    for i in range(len(db_path_shuffled_swaps)):
+        subject_scores_i = np.log10(np.array(pd.DataFrame.from_dict(read_sqlite(db_path_shuffled_swaps[i])['subjects'])['score']).astype('float32'))
+        subject_subj_id_i = list(pd.DataFrame.from_dict(read_sqlite(db_path_shuffled_swaps[i])['subjects'])['subject_id'])
+        score_0_list = np.zeros(len(subject_scores_0));score_1_list = np.zeros(len(subject_scores_0))
+#Subject id's may not be in the same order in each database table so need to get correct score for corresponding subject id:
+        for k in tqdm(range(len(subject_scores_0))):
+          score_0_list[k]= subject_scores_0[k]
+          score_1_list[k]= subject_scores_i[subject_subj_id_i.index(subject_subj_id_0[k])]
+        h = ax[i].hist2d(score_0_list,score_1_list,bins=np.linspace(-13,0,27),norm=mpl.colors.LogNorm())
+        ax[i].set_xlabel('Unshuffled database: log10(score)')
+        ax[i].set_ylabel('Shuffled database: log10(score)')
+        ax[i].set_title(db_path_shuffled_swaps[i])
+#This plots the colourbar - the h[3] index is just where the colour attribute is stored
+        pl.colorbar(h[3],ax=ax[i])
+    pl.show()
+
+#compare_shuffled_swaps('./data/swap_shuffled_0.db',\
+#                        ['./data/swap_shuffled_N100.db','./data/swap_shuffled_N1000.db','./data/swap_shuffled_N10000.db','./data/swap_shuffled_N100000.db','./data/swap_shuffled_N1000000.db'])
+
+
+def optimising_training_frequency(path):
+  def example_training_freq(x,break_val, frac, current):
+    if current ==False:
+        if x<=break_val:
+          return frac[0]
+        else:
+          return frac[1]
+    if current ==True:
+        if x<=16:
+          return 1/3
+        elif 16<x and x<=16+25:
+          return 1/5
+        else:
+          return 1/10
+
+  def cumul_training_freq(N, break_val, frac, current):
+    cumul_freq = 0
+    for i in range(1,N+1):
+      cumul_freq += example_training_freq(i,break_val,frac,current)
+    return cumul_freq/N
+
+  user_score=list(pd.DataFrame.from_dict(read_sqlite(path)['users'])['user_score'])
+  user_score=[eval(user_score[i]) for i in tqdm(range(len(user_score)))]
+  user_score_0 = [user_score[i]['0'] for i in tqdm(range(len(user_score)))]
+  user_score_1 = [user_score[i]['1'] for i in tqdm(range(len(user_score)))]
+#Histogram of Number of images classified from hsc:
+  user_history=pd.DataFrame.from_dict(read_sqlite('./data/swap_hsc_csv_online.db')['users'])['history']
+  N_seen = []
+#SHOULD THIS SUBTRACT 1 AS DONT WANT TO INCLUDE THE PRIOR IN THE HISTORY?
+  for i in tqdm(range(len(user_history))):
+    N_seen.append(len(eval(user_history[i])))
+  N_seen_hist = np.histogram(N_seen,bins=np.linspace(0,np.max(N_seen),np.max(N_seen)+1))[0]
+  N_seen_hist = [np.sum(N_seen_hist[i:len(N_seen_hist)]) for i in range(len(N_seen_hist))]
+#How fast the user scores increase as they see more training images:
+  y_1 = [0., 0.3968254,  0.59090909, 0.66153846, 0.69918699, 0.74912892,0.78658537, 0.77060932, 0.78181818, 0.81818182, 0.83333333,0.85754986,0.8989547,  0.90095238, 0.87162162, 0.8573975,  0.86868687, 0.88516746,0.91212121, 0.92857143, 0.9476584,  0.960047,0.96846847, 0.95444444,0.9337059,  0.93922127, 0.94912846, 0.94702998, 0.95277778, 0.94865375,0.96474359, 0.96784219, 0.97285068,0.96293436, 0.96846847, 0.97370343,0.97866287, 0.97655678, 0.98494709, 0.98885017, 0.99455782, 1.]
+#Making the user score increase 2x as slowly as need to see training images from both duds and training-lenses:
+  y_2 = [np.mean([y_1[i],y_1[i+1]]) for i in range(len(y_1)-1)]
+  y_3 = (y_1+y_2).copy()
+#Sorting skill values so user skill increases monotonically (doesn't drastically change learning rate, but smoothes it out a bit)
+  y_3.sort()
+  y_1 = y_3.copy()
+  x_1 = np.arange(0,len(y_1))
+#Fitting the change in the user score to an exponential:
+  def exp_func(x,b):
+     return 1-np.exp(x*b)
+  fit_params = cf(exp_func,x_1,y_1)[0]
+  y_1 = exp_func(x_1,fit_params)
+
+  user_convergence_func = interpolate.interp1d(x_1, y_1,bounds_error=False,fill_value = (0,1))
+  M_LL_final = np.median(user_score_1)
+  M_NN_final = np.median(user_score_0)
+  print(M_LL_final,M_NN_final)
+  def S(x):
+      x = np.array(x)
+      y = x*np.log2(x)
+      y[x==0]==0
+      return y
+
+#NOTE THIS IS A DIFFERENT av_dI FROM ABOVE AS USES SLIGHTLY DIFFERENT ARGUMENTS (EG M_LL NOT M_CL)
+  def av_dI(p,M_LL,M_NN):
+      return p*(S(M_LL)+S(1-M_LL))\
+        + (1-p)*(S(M_NN)+S(1-M_NN))\
+        -S(p*(M_LL)+(1-p)*(1-M_NN))\
+        -S(p*(1-M_LL)+(1-p)*M_NN)
+
+#n = number of all images seen
+  def info_gained(n,break_val,frac,current):
+    M_LL = ((M_LL_final-0.5)*user_convergence_func(n*cumul_training_freq(n,break_val,frac,current)))+0.5
+    M_NN = ((M_NN_final-0.5)*user_convergence_func(n*cumul_training_freq(n,break_val,frac,current)))+0.5
+    return av_dI(0.5,M_LL,M_NN)
+  
+  def info_gained_tot(break_val,frac,current=False):
+      info_tot = 0.0*np.zeros(len(N_seen))
+      for i in tqdm(range(1,len(N_seen))):
+#Product of the number of people who see the ith image, the fraction of these people for whom this image is a test image, and the information gained by a classification given these people have seen an expected number of training images and thus have a given skill. Note this is the expected info_gained from a average_user, rather than the average of the info_gained from all users. For the latter, see further below.
+        info_tot[i] = (N_seen_hist[i]*(1-example_training_freq(i,break_val,frac,current))*info_gained(i,break_val,frac,current))
+      return np.sum(info_tot)
+#  N_seen_hist=np.array(N_seen_hist)
+#  pl.plot((N_seen_hist-np.min(N_seen_hist))/(np.max(N_seen_hist)-np.min(N_seen_hist)))
+#  q = [];r = []
+#  for v in tqdm(range(len(N_seen_hist))):
+#    q.append(1-example_training_freq(v))
+#    r.append(info_gained(v+1,[0.8,0.2]))
+#  q = np.array(q)
+#  r = np.array(r)
+#  pl.plot(q)
+#  pl.plot((r-np.min(r))/(np.max(r)-np.min(r)))
+#  pl.plot(q*(r-np.min(r))*(N_seen_hist-np.min(N_seen_hist))/((np.max(r)-np.min(r))*(np.max(N_seen_hist)-np.min(N_seen_hist))),c='k')
+#  pl.legend(['N_users','Test freq','Info gained'])
+#  pl.xlabel('Image number')
+#  pl.ylabel('Normalised Scale')
+#  pl.show()
+  def info_from_av_user():
+#      break_val_list = [5,10,15,20,40,60,80,100,120]
+      break_val_list = [5,10,40]
+      break_val_colors = ['Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
+                          'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
+                          'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
+      fig, ax = pl.subplots(3,3,figsize=(10,10))
+      frac_list=[[0.1,0.2],[0.2,0.3]]
+      frac_list=[]
+      for t in range(1,6):
+        for p in range(5):
+          frac_list.append([0.2*t,0.1*p])
+      Z_list = []
+      for u in range(len(break_val_list)):
+          X=[];Y=[];Z=[]
+          for k in range(len(frac_list)):
+            frac = frac_list[k]
+            X.append(frac[0]);Y.append(frac[1]);Z.append(info_gained_tot(break_val_list[u],frac))
+          Z_list.append(Z)
+      Z_current = info_gained_tot(break_val_list[u],frac,True)
+      Z_list = np.array(Z_list)
+      Z_min = np.min([np.min(Z_list),Z_current]); Z_max = np.max([np.max(Z_list),Z_current])
+      txt='Current value: ' + str(np.round((Z_current-Z_min)/(Z_max-Z_min),2))
+      pl.figtext(0.5, 0.01, txt, wrap=True, horizontalalignment='center', fontsize=12)
+      Z_list = (Z_list-Z_min)/(Z_max-Z_min)
+      for u in range(len(break_val_list)):
+          if u<3:
+            f = 0
+            g = u
+          elif u<6:
+            f = 1
+            g = u-3
+          else:
+            f = 2
+            g = u-6
+          Z = Z_list[u]
+          for r in range(len(frac_list)):
+            ax[f,g].annotate(str(np.round(Z[r],2)), (X[r],Y[r]))
+          Z = 0.2+0.8*Z
+          ax[f,g].scatter(X,Y,c=Z,cmap=break_val_colors[u])
+          ax[f,g].axis('scaled')
+          ax[f,g].set_title('Break Value: ' + str(break_val_list[u]))
+          ax[f,g].set_xlabel('Initial Training Fraction')
+          ax[f,g].set_ylabel('Final Training Fraction')
+      pl.show()
+
+#  info_from_av_user()
+
+  def user_training_sample(N,break_val,frac,current):
+     if current==False:
+        if N<=break_val:
+          training_indx =  np.random.choice([0,1],size=N,p = [1-frac[0],frac[0]])
+          return training_indx,np.cumsum(training_indx)
+        else:
+          training_indx =  np.concatenate((np.random.choice([0,1],size=break_val,p = [1-frac[0],frac[0]]),np.random.choice([0,1],size=N-break_val,p = [1-frac[1],frac[1]])))
+          return training_indx,np.cumsum(training_indx)
+     if current==True:
+        if N<=16:
+          training_indx =  np.random.choice([0,1],size=N,p = [2/3,1/3])
+          return training_indx,np.cumsum(training_indx)
+        elif N<=25+16:
+          training_indx =  np.concatenate((np.random.choice([0,1],size=16,p = [2/3,1/3]),np.random.choice([0,1],size=N-16,p = [4/5,1/5])))
+          return training_indx,np.cumsum(training_indx)
+        else:
+          training_indx =  np.concatenate((np.random.choice([0,1],size=16,p = [2/3,1/3]),np.random.choice([0,1],size=25,p = [4/5,1/5]),np.random.choice([0,1],size=N-16-25,p = [9/10,1/10])))
+          return training_indx,np.cumsum(training_indx)
+
+  N_seen_hist_norm = np.histogram(N_seen,bins=np.linspace(0,np.max(N_seen),np.max(N_seen)+1),density=True)[0]
+  
+  #Samples random users, calculates the total information they provide based on the number of images they saw, how fast the typical user score increases with training images, and the number of test images seen. Returns I_total = Sum[Info_gained_from_image*BOOL(Test_image?)]
+  def random_user_sampling(iteration,frac,break_val,current=False):
+     tot_info = 0
+     N_array = np.random.choice(np.arange(len(N_seen_hist_norm)), size=iteration, replace=True, p=N_seen_hist_norm)
+     if current==False:
+         for i in range(iteration):
+            N = N_array[i]
+            training_indx,cumul_training_indx = user_training_sample(N,break_val,frac,current)
+    #        print('Cumulative training index')
+    #        print(cumul_training_indx)
+    #        print('user convergence func')
+    #        print(user_convergence_func(cumul_training_indx))
+    #        print('User skill')
+            M_LL = ((M_LL_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+            M_NN = ((M_NN_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+    #        print(M_LL)
+    #        print(M_NN)
+    #        print('average info')
+#Returns I_total = Sum[Info_gained_from_image*BOOL(Test_image?)]
+            av_info =np.sum(av_dI(0.5,M_LL,M_NN)*(1-training_indx))
+            tot_info+=av_info
+     else:
+        for i in tqdm(range(iteration)):
+            N = N_array[i]
+            training_indx,cumul_training_indx =user_training_sample(N,break_val,frac,current)
+            M_LL = ((M_LL_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+            M_NN = ((M_NN_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+            av_info =np.sum(av_dI(0.5,M_LL,M_NN)*(1-training_indx))
+            tot_info+=av_info
+     return tot_info
+
+  
+  def plot_info():
+      break_val_list = [5,10,15,20,40,60,80,100,120]
+      break_val_colors = ['Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
+                          'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
+                          'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
+      fig, ax = pl.subplots(3,3,figsize=(10,10))
+      frac_list=[[0.1,0.2],[0.2,0.3]]
+      frac_list=[]
+      for t in range(1,6):
+        for p in range(5):
+          frac_list.append([0.2*t,0.1*p])
+      Z_list = []
+      for u in tqdm(range(len(break_val_list))):
+          X=[];Y=[];Z=[]
+          for k in range(len(frac_list)):
+            frac = frac_list[k]
+            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(100,frac,break_val_list[u]))
+#            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(100000,frac,break_val_list[u]))
+          Z_list.append(Z)
+          print(X)
+          print(Y)
+          print(Z)
+#      Z_current = np.min(Z_list) #Remove this line once calculated actual Z_current
+#      Z_current = info_gained_tot(np.nan,frac,True)
+      Z_current = random_user_sampling(100,np.nan,np.nan,current=True)
+      Z_list = np.array(Z_list)
+      Z_min = np.min([np.min(Z_list),Z_current]); Z_max = np.max([np.max(Z_list),Z_current])
+      txt='Current value: ' + str(np.round((Z_current-Z_min)/(Z_max-Z_min),2))
+      pl.figtext(0.5, 0.01, txt, wrap=True, horizontalalignment='center', fontsize=12)
+      Z_list = (Z_list-Z_min)/(Z_max-Z_min)
+      for u in range(len(break_val_list)):
+          if u<3:
+            f = 0; g = u
+          elif u<6:
+            f = 1;g = u-3
+          else:
+            f = 2;g = u-6
+          Z = Z_list[u]
+          for r in range(len(frac_list)):
+            ax[f,g].annotate(str(np.round(Z[r],2)), (X[r],Y[r]))
+          Z = 0.2+0.8*Z
+          ax[f,g].scatter(X,Y,c=Z,cmap=break_val_colors[u])
+          ax[f,g].axis('scaled')
+          ax[f,g].set_title('Break Value: ' + str(break_val_list[u]))
+          ax[f,g].set_xlabel('Initial Training Fraction')
+          ax[f,g].set_ylabel('Final Training Fraction')
+      pl.show()
+      print(Z_min,Z_max)
+    
+  def calculate_current_info():
+    #Note number of iterations will change info value, so need to make sure it is the same as above:
+#    print(random_user_sampling(100000,[0,0],0,current=True))
+    print(random_user_sampling(100,[0,0],0,current=True))
+
+  plot_info()
+  calculate_current_info()
+
+#optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db')
+
+import json
+def hsc_high_score_users(path):
+  users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
+  user_id = users['user_id']
+  user_score_matrices=users['user_score']
+  user_confusion_matrices=users['confusion_matrix']
+  # start with a square Figure
+  fig = pl.figure(figsize=(8, 8))
+  xy = [];s=[]
+  for p in tqdm(range(len(user_score_matrices))):
+    xy.append(eval(user_score_matrices[p]))
+    s.append(eval(user_confusion_matrices[p]))
+#          x_NL.append(eval(user_score_matrices[p])['1']);y_NL.append(eval(user_score_matrices[p])['0']);s_NL.append(sum(eval(user_confusion_matrices[p])['n_seen']))
+  xy = np.array(xy)
+  s = np.array(s)
+  x = np.array([xy[i]['1'] for i in tqdm(range(len(xy)))])
+  y = np.array([xy[i]['0'] for i in tqdm(range(len(xy)))])
+  s = np.array([np.sum(s[i]['n_gold']) for i in tqdm(range(len(s)))])
+  classification_limit = 500
+  s_large = s[s>classification_limit]
+  pl.scatter(x[s>classification_limit], y[s>classification_limit],s=(1+s_large)/15,c='blue')
+  pl.gca().set_aspect('equal')
+  pl.xlabel('P("LENS"|LENS)')
+  pl.ylabel('P("NOT"|NOT)')
+  pl.xlim(0,1)
+  pl.ylim(0,1)
+  print(user_id[(s>classification_limit) & (x>0.8)& (y>0.8)])
+  user_id_list = [82,1775810,1533,117105]
+  for i in range(len(users)):
+    if user_id[i] in user_id_list:
+        print(user_score_matrices[i],user_confusion_matrices[i])
+  pl.show()
+
+#hsc_high_score_users('./data/swap_hsc_online_includeloggedon.db')
+#hsc_high_score_users('./data/swap_hsc_online_excludeloggedon.db')
+#hsc_high_score_users('./data/swap_hsc_csv_online.db')
+
+
+def N_class_func(path):
+    print(path)
+    users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
+#    print(pd.DataFrame.from_dict(read_sqlite(path)['subjects']))
+    subjects_hist = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])
+    subjects_gold =  pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label']
+    N_class_outside_retirement_bounds = 0
+    N_class_all = 0
+    for i in range(len(subjects_hist)):
+      if subjects_gold[i]==-1:
+        subj_hist_i = eval(pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history'][i])
+        for j in range(len(subj_hist_i)):
+          N_class_all+=1
+          if subj_hist_i[j][3]>10**-5:
+            N_class_outside_retirement_bounds+=1
+#    for i in range(len(users)):
+#      N_class+=len(eval(users['history'][i]))-1
+    print(N_class_all,N_class_outside_retirement_bounds)
+
+path_list = ['./data/swap_bFINAL_hardsimsaretest.db','./data/swap_bFINAL_hardsimsaretest_excludenotloggedon.db','./data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db','./data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse_offlineswap.db','./data/swap_bFINAL_hardsimsaretraining.db','./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db','./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon_changingalreadyseen3tofalse.db','./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon_changingalreadyseen3tofalse_offlineswap.db','./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon_offlineswap.db','./data/swap_bFINAL_hardsimsaretraining_offlineswap.db','./data/swap_bFINAL_simul_AWS.db','/Users/hollowayp/Documents/swap beta25 backup1.db','/Users/hollowayp/Documents/swap beta25 backup2.db','/Users/hollowayp/Documents/swap beta25 backup3.db','/Users/hollowayp/Documents/swap beta25 backup4.db','/Users/hollowayp/Documents/swap beta25 backup5.db','/Users/hollowayp/Documents/swap beta25 backup6.db','/Users/hollowayp/Documents/swap beta25 backup7.db','/Users/hollowayp/Documents/swap beta25 backup8.db','./data/swap_simul_AWS.db','./data/swap_simul_hardsimsaretest_excludenotloggedon.db','./data/swap_simul_hardsimsaretest.db','./data/swap_simul_hardsimsaretraining_excludenotloggedon_changingalreadyseen3tofalse_offlineswap.db','./data/swap_simul_hardsimsaretraining_excludenotloggedon_changingalreadyseen3tofalse.db','./data/swap_simul_hardsimsaretraining_excludenotloggedon_offlineswap.db','./data/swap_simul_hardsimsaretraining_excludenotloggedon.db','./data/swap_simul_hardsimsaretraining.db']
+
+for i in range(0):
+  path_i = path_list[i]
+  N_class_func(path_i)
+
