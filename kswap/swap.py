@@ -21,7 +21,7 @@ except ModuleNotFoundError:
 import time
 import multiprocess as mp
 from multiprocessing.dummy import Pool
-
+import caesar_external as ce
 #**See note line 459**
 #Classification Class:
 #Arguments: Classification_id, User_id, Subject_id, Annotation, Label_map
@@ -85,6 +85,7 @@ class User(object):
       self.initialise_user_score()
     self.initialise_confusion_matrix()
     self.history = [('_', self.user_score,'_','_')]
+    self.user_subject_history = []
   
   def initialise_confusion_matrix(self):
       self.confusion_matrix = {'n_seen': [0]*self.k, 'n_gold': [0]*self.k}
@@ -120,7 +121,8 @@ class User(object):
     return (self.user_id,
             json.dumps(self.user_score),
             json.dumps(self.confusion_matrix),
-            json.dumps(self.history))
+            json.dumps(self.history),
+            json.dumps(self.user_subject_history))
 
 #Subject Class:
 #Arguments: Subject_ID, p0 (ie initial probability), classes (0,1) , gold-label (default= -1 ie not training), k (ie N. classes), retired (=False).
@@ -228,7 +230,7 @@ class SWAP(object):
   def create_db(self):
     conn = self.connect_db()
     conn.execute('CREATE TABLE users (user_id PRIMARY KEY, user_score, ' +\
-                 'confusion_matrix, history)')
+                 'confusion_matrix, history, user_subject_history)')
 
     conn.execute('CREATE TABLE subjects (subject_id PRIMARY KEY, ' +\
                  'gold_label, score, retired, retired_as, seen ,history, hard_sim_label)')
@@ -250,6 +252,8 @@ class SWAP(object):
                                          user_default=user_score)
       self.users[user['user_id']].confusion_matrix = json.loads(user['confusion_matrix'])
       self.users[user['user_id']].history = json.loads(user['history'])
+      self.users[user['user_id']].user_subject_history = json.loads(user['user_subject_history'])
+
 #As above, but for all subjects in the subject dictionary.
   def load_subjects(self, subjects):
     for subject in subjects:
@@ -323,7 +327,7 @@ class SWAP(object):
     def zip_name(data):
       return [d.values() for d in data]
 
-    c.executemany('INSERT OR REPLACE INTO users VALUES (?,?,?,?)',
+    c.executemany('INSERT OR REPLACE INTO users VALUES (?,?,?,?,?)',
                    self.dump_users())
 
     c.executemany('INSERT OR REPLACE INTO subjects VALUES (?,?,?,?,?,?,?,?)',
@@ -355,25 +359,26 @@ class SWAP(object):
       self.subjects[cl.subject_id] = Subject(subject_id = cl.subject_id,
                                              p0 = self.config.p0,
                                              classes = self.config.label_map.keys())
-    self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id],time_stamp,classification_time)
-    if online:
-      if self.subjects[cl.subject_id].gold_label==0:
-        print('Gold, dud, updating user score')
-        print(self.users[cl.user_id].user_score)
-        self.users[cl.user_id].update_user_score(0, cl.label)
-        print(self.users[cl.user_id].user_score)
-      if self.subjects[cl.subject_id].gold_label==1:
-        print('Gold, lens...')
-        if self.subjects[cl.subject_id].hard_sim_label == 0 or (self.subjects[cl.subject_id].hard_sim_label == 1 and int(cl.label)==1):
-          print('... easy sim or (hard sim & correct), updating user score. Hard sim:' + str(self.subjects[cl.subject_id].hard_sim_label))
-          print(self.users[cl.user_id].user_score)
-          self.users[cl.user_id].update_user_score(1, cl.label)
-          print(self.users[cl.user_id].user_score)
-        else:
-          print('hard sim, not updating user score')
-    self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score,time_stamp,classification_time))
-    self.last_id = cl.id
-    self.seen.add(cl.id)
+#REMOVE RANDINT SECTION OF THE NEXT LINE - JUST INCLUDED FOR TESTING PURPOSES np.random.randint(0,10)!=0.
+    if cl.subject_id not in self.users[cl.user_id].user_subject_history:
+        self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id],time_stamp,classification_time)
+        if online:
+          if self.subjects[cl.subject_id].gold_label==0:
+#            print('Gold, dud, updating user score')
+            self.users[cl.user_id].update_user_score(0, cl.label)
+          if self.subjects[cl.subject_id].gold_label==1:
+#            print('Gold, lens...')
+            if self.subjects[cl.subject_id].hard_sim_label == 0 or (self.subjects[cl.subject_id].hard_sim_label == 1 and int(cl.label)==1):
+#              print('... easy sim or (hard sim & correct), updating user score. Hard sim:' + str(self.subjects[cl.subject_id].hard_sim_label))
+              self.users[cl.user_id].update_user_score(1, cl.label)
+            else:
+              print('hard sim, not updating user score')
+        self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score,time_stamp,classification_time))
+        self.users[cl.user_id].user_subject_history.append(cl.subject_id)
+        self.last_id = cl.id
+        self.seen.add(cl.id)
+    else:
+        print('User has seen subject before: Ignoring')
 
 #Takes as an input a list of subjects. If a subject is gold, it is not retired, otherwise if its score is past either threshold it is added to the to_retire list and marked as '0' or '1' depending on which threshold it passed.
   def retire(self, subject_batch):
@@ -438,7 +443,8 @@ class SWAP(object):
     #    for subject_id in subject_batch:
     #      subjects.append(PanoptesSubject().find(subject_id))
         self.workflow.retire_subjects(subjects,reason=reason)
-    except:
+    except Exception as excep:
+      print(excep)
       with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'r') as g:
         keyerror_list=eval(g.read())
         keyerror_list[4]+=1
@@ -475,9 +481,12 @@ class SWAP(object):
         try:
           assert int(row['workflow_id']) == self.config.workflow
         except AssertionError as e:
-          print('Assertion Error in proccess_classifications_from_csv_dump')
+           pass
+#          print('Assertion Error in proccess_classifications_from_csv_dump')
         try:
           user_id = int(row['user_id'])
+#          if row['user_name'][0:13]=='not-logged-in':
+#            continue
         except ValueError:
           user_id = row['user_name']
         dt_row = row['created_at']
@@ -542,18 +551,18 @@ class SWAP(object):
               user_id = row_i['user_name']
             subject_id = int(row_i['subject_ids'])
             annotation = json.loads(row_i['annotations'])
-            already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
+#            already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
             classification_time=row_i['created_at']
-            if already_seen_i==False:
-              cl = Classification(id,
+ #           if already_seen_i==False:
+            cl = Classification(id,
                   user_id,
                   subject_id,
                   annotation,
                   label_map=self.config.label_map,
                   classification_time=classification_time)
-              self.process_classification(cl, online)
-            else:
-              print('duplicate classification' + str((subject_id,user_id)))
+            self.process_classification(cl, online)
+#            else:
+#              print('duplicate classification' + str((subject_id,user_id)))
 
 #Returns a timestamp for the time the classification was made
   def date_time_convert(self, row_created_at):
@@ -564,28 +573,32 @@ class SWAP(object):
       dt_i = datetime(int(row_created_at[0:s_i[0]]), int(row_created_at[s_i[0]+1:s_i[1]]), int(row_created_at[s_i[1]+1:s_i[1]+3]),int(row_created_at[s_i[2]-2:s_i[2]]), int(row_created_at[s_i[2]+1:s_i[3]])).timestamp()
       return dt_i
 
-  def process_classifications_from_shuffled_csv(self, path, online=False):
+  def process_classifications_from_shuffled_csv(self, path, shuffle_time,online=False):
     with open(path, 'r') as csvdump:
       reader = csv.DictReader(csvdump)
       q='initialise'
       row_list=[]
+      i=0;f = 0
       for row in reader:
-        if q=='continue':
-          dt_i = self.date_time_convert(row['created_at'])
-          if dt_i<dt_0+18000:
+        if f<shuffle_time:
             row_list.append(row)
-          else:
+            f+=1
+        else:
             self.classify_rows(row_list,online)
-            row_list=[]
-            dt_0 = self.date_time_convert(row['created_at'])
-            row_list.append(row)
-        #Note this 'if' statement must go last:
-        if q=='initialise':
-          dt_0 = self.date_time_convert(row['created_at'])
-          row_list.append(row)
-          q='continue'
-        if q =='unaltered':
-          self.classify_rows([row],online)
+            f=0
+            row_list=[row]
+#          if i==0:
+#            dt_0 = self.date_time_convert(row['created_at'])
+#            row_list.append(row)
+#            i+=1
+#          else:
+#            dt_i = self.date_time_convert(row['created_at'])
+#            if dt_i<dt_0+shuffle_time:
+#              row_list.append(row)
+#            else:
+#              self.classify_rows(row_list,online)
+#              row_list=[row]
+#              dt_0 = self.date_time_convert(row['created_at'])
       self.classify_rows(row_list,online)
 #Recieves data from caesar, adds classification events/updating scores (as per process_classification), but doesnt set any to be retired.
   def caesar_recieve(self, ce):
@@ -651,6 +664,8 @@ class SWAP(object):
                   self.last_id = id
                   self.seen.add(id)
                   subject_batch.append(subject_id)
+              else:
+                print('SUBJECT IGNORED AS REQUIRED')
           except KeyError as e:
             print('KEYERROR_1 HERE')
             print(e)
@@ -664,7 +679,7 @@ class SWAP(object):
         else:
             logging.info('time taken = ' + str(et-st)+ ' for ' + str(q) + ' classifications.')
         return haveItems, subject_batch,q,q_all,keyerror_1_i,keyerror_2_i, q_all
-    except exception as ex:
+    except Exception as ex:
         print('KEYERROR_2 HERE')
         print(ex)
         keyerror_2_i+=1
@@ -683,11 +698,7 @@ class SWAP(object):
     print('       3) Need to email cliff again about the delay time before images are no longer offered for classification on zooniverse')
     print('       4) Need to make sure _already_seen_ IF statement is correct above, ie it isnt just _if True:_ as otherwise duplicate classifications can happen')
     print('       5) Adjust config file to change retirement thresholds before running, and can change file paths here as needed ')
-    retirement_time_array_x = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-    retirement_time_array_y = [[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]]
-#    test_retirement_list = []
-    process_time_array_x = [0,0,0,0,0,0,0,0,0,0,0]
-    process_time_array_y = [[],[],[],[],[],[],[],[],[],[],[]]
+    save_timer_start = time.time()
     try:
       while True:
         ST_time = time.time()
@@ -702,10 +713,13 @@ class SWAP(object):
         if haveItems:
           k=0
           print(aws_list)
-          self.save()
+          st_save=time.time()
+#          self.save()
           ce.Config.instance().save()
           # load the just saved ce config
           ce.Config.load(caesar_config_name)
+          et_save=time.time()
+          print('Save time: ' + str(et_save-st_save))
         else:
           k+=1
           print(aws_list)
@@ -717,18 +731,32 @@ class SWAP(object):
 #        retired_list = self.retrieve_list(self.config.retired_items_path)
 #        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
 #        self.save_list(retired_list,self.config.retired_items_path)
+#GET RID OF THIS UNRETIREMENT LINE!!! JUST NEEDED FOR TESTING TEMPORARILY
+#        self.workflow.unretire_subjects(np.array(retire_batch).tolist())
+#        for f in range(len(retire_batch)):
+#          if self.workflow.subject_workflow_status([retire_batch[f]]).retirement_reason!=None:
+#            print('RETIREMENT ERROR HERE')
         ST_retirement=time.time()
 #        self.send_panoptes(retire_list_thres,'consensus')
 #        self.send_panoptes(retire_list_Nclass,'classification_count')
         self.send_panoptes(retire_batch,'consensus')
-        self.save()
+        st_save2 = time.time()
+#        self.save()
+        et_save2 = time.time()
+        print('Single save time: ' + str(et_save2-st_save2))
         ED_retirement=time.time()
-        logging.info('Retirement time: ' + str((ED_retirement-ST_retirement)/np.max([1,len(retire_batch)])) + 'for ' +  str(len(retire_batch)) + ' retirements')
+        logging.info('Retirement time: ' + str((ED_retirement-ST_retirement)/np.max([1,len(retire_batch)])) + '/subj for ' +  str(len(retire_batch)) + ' retirements')
+#        for f in range(len(retire_batch)):
+#          if self.workflow.subject_workflow_status([retire_batch[f]]).retirement_reason!='consensus':
+#            print('RETIREMENT ERROR 2 HERE')
 #        #Number retired may include double counting as subjects can be retired by both consensus or classification_count, but use this as want total number of subjects sent for retirement.
 #        number_retired = int(len(set(np.array(retire_list_thres)))+len(set(np.array(retire_list_Nclass))))
-#        retirement_time_array_x[number_retired]+=1
-#        retirement_time_array_y[number_retired].append(et-st)
-#        test_retirement_list.extend(retire_list_thres+retire_list_Nclass)
+#KEEP NEXT LINE IN! SAVES DATABASE EVERY 30MINS:
+        if time.time()-save_timer_start>1800:
+          print('Starting saving')
+          self.save()
+          save_timer_start = time.time()
+          print('Finished saving')
         if keyerror_1_i != 0 or keyerror_2_i !=0:
             with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'r') as g:
               keyerror_list=eval(g.read())
@@ -742,6 +770,10 @@ class SWAP(object):
         ED_time = time.time()
         print('Total loop time per subject:' + str((ED_time-ST_time)/np.max([N_proc,1])) +' for ' + str(N_proc) + ' classifications')
     except KeyboardInterrupt as e:
+#New save func:
+      print('Starting save')
+      self.save()
+      print('Finishing save')
 #      print(retirement_time_array_x,[np.median(retirement_time_array_y[i]) for i in range(len(retirement_time_array_y))],[np.mean(retirement_time_array_y[i]) for i in range(len(retirement_time_array_y))])
 #      st_1 = time.time()
 #      self.send_panoptes(list(set(np.array(test_retirement_list))),'classification_count')
@@ -758,7 +790,7 @@ class SWAP(object):
       try:
         with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
           f.write(str(aws_list))
-      except exception as exep:
+      except Exception as exep:
         print(exep)
         print('cant save AWS list for final iteration')
         pass
@@ -766,6 +798,8 @@ class SWAP(object):
       self.save()
       print('Terminating SWAP instance.')
       exit()
+    except:
+      self.save()
 ###Retirements:
     st=time.time()
     logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
@@ -864,6 +898,10 @@ class SWAP(object):
   def run_online(self, gold_csv, classification_csv,hard_sims_csv=None):
     self.get_golds(gold_csv,hard_sims_csv)
     self.process_classifications_from_csv_dump(classification_csv, online=True)
+    
+  def run_shuffled_online(self, gold_csv, classification_csv,shuffle_time,hard_sims_csv=None):
+    self.get_golds(gold_csv,hard_sims_csv)
+    self.process_classifications_from_shuffled_csv(classification_csv,shuffle_time, online=True)
 
   def run_caesar(self,gold_csv,hard_sims_csv=None):
     self.load()

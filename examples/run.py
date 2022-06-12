@@ -9,7 +9,7 @@ def test_offline():
   swap = SWAP(config=Config())
   swap = swap.load() #ie any previous user/subject details (otherwise gives default values to user/subject).
   swap.run_offline(Config().golds_path,
-                   './data/swhsc-6605-classification_060518_0317.csv',Config().hard_sims_path)
+                     Config().classification_path,Config().hard_sims_path)
   swap.save()
   del swap
   swap = SWAP(config=Config())
@@ -20,7 +20,19 @@ def test_online():
   from config import Config
   swap = SWAP(config=Config())
   swap = swap.load()
-  swap.run_online('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/dec_beta_golds_file.csv','./data/Dec_21_test_classifications.csv',Config().hard_sims_path)
+  swap.run_online(Config().golds_path,Config().classification_path,Config().hard_sims_path)
+  #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv
+  #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/alpha_test_classifications_cropped.csv
+  swap.save()
+  del swap
+  swap = SWAP(config=Config())
+  swap = swap.load()
+
+def test_shuffled_online():
+  from config import Config
+  swap = SWAP(config=Config())
+  swap = swap.load()
+  swap.run_shuffled_online(Config().golds_path,Config().classification_path,Config().shuffle_time,Config().hard_sims_path)
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/HSC_Classifications_and_Golds/swhsc-6605-classification_060518_0317.csv
   #/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/alpha_test_classifications_cropped.csv
   swap.save()
@@ -88,7 +100,8 @@ def main():
   print('Starting Iteration')
 #  test_online()
 #  test_online()
-  test_caesar()
+  test_shuffled_online()
+#  test_caesar()
   print('Finished Iteration')
 #  test_online()
 #  print('4: Compare')

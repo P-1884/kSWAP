@@ -13,7 +13,7 @@ from pandas import read_sql_query, read_sql_table
 from scipy.optimize import curve_fit as cf
 from collections import Counter
 from scipy import interpolate
-from matplotlib import cm
+from matplotlib import cm,colors
 from tqdm import tqdm
 
 sys.path.append('/Users/hollowayp/Documents/GitHub/kSWAP/kswap')
@@ -297,25 +297,28 @@ def gold_frequency(path):
 
 def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
     user_history=pd.DataFrame.from_dict(read_sqlite(path)['users'])['history']
-    f_i = 0;f_max = 0
-    for f in tqdm(range(len(user_history))):
-      if len(eval(user_history[f]))>f_max:
-        f_max = len(eval(user_history[f]))
-        f_i = f
     user_score_lens = [[eval(user_history[i])[j][1]["1"] for j in range(len(eval(user_history[i])))] for i in tqdm(range(len(user_history)))]
     user_score_dud = [[eval(user_history[i])[j][1]["0"] for j in range(len(eval(user_history[i])))] for i in tqdm(range(len(user_history)))]
+
+    #List of lists, [[Change in user-score with each classification] ...for all users]:
+    #User Score for identifying lenses:
     delta_user_score_lens = [[(user_score_lens[i][j+1]-user_score_lens[i][j]) for j in range(len(user_score_lens[i])-1)] for i in tqdm(range(len(user_history)))]
+    #User Score for identifying duds:
     delta_user_score_dud = [[(user_score_dud[i][j+1]-user_score_dud[i][j]) for j in range(len(user_score_dud[i])-1)] for i in tqdm(range(len(user_history)))]
+
     fig, ax = pl.subplots(2,3,figsize=(25,10))
     N=[]
+    #frac_lens_array gives the fractional change in the (lens) score, for each user, for users who have seen at least 20 images.
     frac_lens_array = []
     for k in tqdm(range(len(delta_user_score_lens))):
       delta_user_score_lens[k] = np.array(delta_user_score_lens[k])
+      #Removing occurances where the user score doesn't change (ie don't see a training image of the corresponding type, (i.e. lens in this case)):
       delta_user_score_lens[k] = delta_user_score_lens[k][delta_user_score_lens[k]!=0]
       delta_user_score_lens[k] = [0]+delta_user_score_lens[k]
       N.append(len(delta_user_score_lens[k]))
       ax[0,0].plot(user_score_lens[k])
       ax[0,1].plot(abs(delta_user_score_lens[k]),alpha=0.3)
+      #Calculating the fractional change in their score, as a function of the total user-score change, for users who have seen at least 20 training images.
       if len(delta_user_score_lens[k])>=20:
         delta_tot = np.sum(delta_user_score_lens[k])
         frac = [np.sum(delta_user_score_lens[k][0:i]) for i in range(1,len(delta_user_score_lens[k])+1)]
@@ -323,11 +326,12 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
         frac = [0]+frac
         frac_lens_array.append(np.array(frac)/delta_tot)
         ax[0,2].plot(np.array(frac)/delta_tot,alpha=0.4)
-    print(sum(np.array(N)>=20))
     N=[]
+    #frac_lens_array gives the fractional change in the (dud) score, for each user, for users who have seen at least 20 training images.
     frac_dud_array = []
     for k in tqdm(range(len(delta_user_score_dud))):
       delta_user_score_dud[k] = np.array(delta_user_score_dud[k])
+      #Removing occurances where the user score doesn't change (ie don't see a training image of the corresponding type, (i.e. duds in this case)):
       delta_user_score_dud[k] = delta_user_score_dud[k][delta_user_score_dud[k]!=0]
       delta_user_score_dud[k] = [0]+delta_user_score_dud[k]
       ax[1,0].plot(user_score_dud[k])
@@ -342,6 +346,8 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
         average_delta_user_score = []
         error_bar_lower = []
         error_bar_upper = []
+        #Only calculating for first 50 classifications of training images (of each type):
+        #List of lists, [[Change in user score for all users for i'th training image] ...for all training image classifications]:
         for i in tqdm(range(50)):
           average_delta_user_score.append([])
           for j in range(len(delta_user_score)):
@@ -353,6 +359,7 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
           median = np.median(average_delta_user_score[i])
           error_bar_lower.append(np.std(average_delta_user_score[i]))
           error_bar_upper.append(np.std(average_delta_user_score[i]))
+          #Now replace with the median score for the i'th classification:
           if error ==False:
             average_delta_user_score[i] = np.median(abs(average_delta_user_score[i]))
           else:
@@ -366,6 +373,10 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
     average_frac_dud, error_dud_lower,error_dud_upper = average_delta_user_score_func(frac_dud_array,error=True)
     print(error_dud_lower)
     ax[0,2].plot(average_frac_lens,'-.',color='k')
+    #Find the average fractional change of user score for lenses and duds combined, for users who have seen >20 training images.
+    print('Numbers to note:')
+    #Input list is [[fraction_of_total_dud_score] for all users] concatenated with [[fraction_of_total_lens_score] for all users]
+    #=> Producing [[fraction_of_total_dud_score] for all users,[fraction_of_total_lens_score] for all users] as required.
     print(average_delta_user_score_func(frac_dud_array+frac_lens_array,error=True)[0])
     ax[1,2].plot(average_frac_dud,'-.',color='k')
     ax[0,2].errorbar(np.arange(len(average_frac_lens)),average_frac_lens,yerr = [error_lens_lower,error_lens_upper],color='k')
@@ -417,6 +428,12 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
     ax[1,0].set_title('Dud')
     ax[0,1].set_title('Lens')
     ax[1,1].set_title('Dud')
+    #Finding the user with the longest classification history:
+    f_i = 0;f_max = 0
+    for f in tqdm(range(len(user_history))):
+      if len(eval(user_history[f]))>f_max:
+        f_max = len(eval(user_history[f]))
+        f_i = f
     ax[0,0].plot(user_score_lens[f_i],color='k')
     ax[0,1].plot(abs(delta_user_score_lens[f_i]),color='k',alpha=0.7)
     ax[1,0].plot(user_score_dud[f_i],color='k')
@@ -424,12 +441,12 @@ def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
     for p in range(2):
         ax[p,0].set_ylabel('User score')
         ax[p,0].set_xlabel('Number of subjects seen')
-        ax[p,1].set_ylabel('Change in user score')
+        ax[p,1].set_ylabel('|Change in user score|')
     ax[0,1].set_xlabel('Number of (Lens) training subjects seen')
     ax[1,1].set_xlabel('Number of (Dud) training subjects seen')
     pl.show()
 
-score_plots()
+#score_plots()
 
 def scatter_hist(x, y, s, ax, ax_histx, ax_histy,not_logged_on=False):
     ax_histx.tick_params(axis="x", labelbottom=False)
@@ -1071,9 +1088,9 @@ def optimising_training_frequency(path):
 #Histogram of Number of images classified from hsc:
   user_history=pd.DataFrame.from_dict(read_sqlite('./data/swap_hsc_csv_online.db')['users'])['history']
   N_seen = []
-#SHOULD THIS SUBTRACT 1 AS DONT WANT TO INCLUDE THE PRIOR IN THE HISTORY?
+#Subtracting 1 as don't want to include the prior in the history:
   for i in tqdm(range(len(user_history))):
-    N_seen.append(len(eval(user_history[i])))
+    N_seen.append(len(eval(user_history[i]))-1)
   N_seen_hist = np.histogram(N_seen,bins=np.linspace(0,np.max(N_seen),np.max(N_seen)+1))[0]
   N_seen_hist = [np.sum(N_seen_hist[i:len(N_seen_hist)]) for i in range(len(N_seen_hist))]
 #How fast the user scores increase as they see more training images:
@@ -1086,10 +1103,10 @@ def optimising_training_frequency(path):
   y_1 = y_3.copy()
   x_1 = np.arange(0,len(y_1))
 #Fitting the change in the user score to an exponential:
-  def exp_func(x,b):
-     return 1-np.exp(x*b)
-  fit_params = cf(exp_func,x_1,y_1)[0]
-  y_1 = exp_func(x_1,fit_params)
+#  def exp_func(x,b):
+#     return 1-np.exp(x*b)
+#  fit_params = cf(exp_func,x_1,y_1)[0]
+#  y_1 = exp_func(x_1,fit_params)
 
   user_convergence_func = interpolate.interp1d(x_1, y_1,bounds_error=False,fill_value = (0,1))
   M_LL_final = np.median(user_score_1)
@@ -1248,19 +1265,21 @@ def optimising_training_frequency(path):
         for p in range(5):
           frac_list.append([0.2*t,0.1*p])
       Z_list = []
+      N_runs = 10
       for u in tqdm(range(len(break_val_list))):
           X=[];Y=[];Z=[]
           for k in range(len(frac_list)):
             frac = frac_list[k]
-            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(100,frac,break_val_list[u]))
+            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(N_runs,frac,break_val_list[u]))
 #            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(100000,frac,break_val_list[u]))
           Z_list.append(Z)
           print(X)
           print(Y)
           print(Z)
+          np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(break_val_list[u]),Z)
 #      Z_current = np.min(Z_list) #Remove this line once calculated actual Z_current
 #      Z_current = info_gained_tot(np.nan,frac,True)
-      Z_current = random_user_sampling(100,np.nan,np.nan,current=True)
+      Z_current = random_user_sampling(N_runs,np.nan,np.nan,current=True)
       Z_list = np.array(Z_list)
       Z_min = np.min([np.min(Z_list),Z_current]); Z_max = np.max([np.max(Z_list),Z_current])
       txt='Current value: ' + str(np.round((Z_current-Z_min)/(Z_max-Z_min),2))
@@ -1282,17 +1301,19 @@ def optimising_training_frequency(path):
           ax[f,g].set_title('Break Value: ' + str(break_val_list[u]))
           ax[f,g].set_xlabel('Initial Training Fraction')
           ax[f,g].set_ylabel('Final Training Fraction')
+      print(Z_min,Z_max,Z_current)
+      np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val',np.array([Z_min,Z_max,Z_current]))
       pl.show()
-      print(Z_min,Z_max)
     
-  def calculate_current_info():
-    #Note number of iterations will change info value, so need to make sure it is the same as above:
+#  def calculate_current_info():
+#    #Note number of iterations will change info value, so need to make sure it is the same as above:
 #    print(random_user_sampling(100000,[0,0],0,current=True))
-    print(random_user_sampling(100,[0,0],0,current=True))
+#    print(random_user_sampling(100,[0,0],0,current=True))
 
   plot_info()
-  calculate_current_info()
+#  calculate_current_info()
 
+optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest.db')
 #optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db')
 
 import json
@@ -1358,3 +1379,49 @@ for i in range(0):
   path_i = path_list[i]
   N_class_func(path_i)
 
+def plot_histogram_with_text(x,y,z,shape,xlabel = '',ylabel = '',title = '',figtxt = '',min_z = np.nan,max_z = np.nan):
+    if np.isnan(min_z):
+      min_z = np.min(z)
+    if np.isnan(max_z):
+      max_z = np.max(z)
+    dx = 0.5*(np.min(x[x!=np.min(x)])-np.min(x))
+    dy = 0.5*(np.min(y[y!=np.min(y)])-np.min(y))
+    x = x.reshape(shape,order = 'F')
+    y = y.reshape(shape,order = 'F')
+    z = z.reshape(shape,order = 'F')
+    z = np.round(z,2)
+    # The normal figure
+    fig = pl.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111)
+    im = ax.imshow(z, extent=[np.min(x)-dx,np.max(x)+ dx,np.min(y)-dy,np.max(y)+dy], origin='lower',aspect='auto',norm = colors.Normalize(min_z,max_z))
+    # Add the text
+    jump_x = (np.max(x) - np.min(x)) / (2.0 * (len(x)-1))
+    jump_y = (np.max(y) - np.min(y)) / (2.0 * (len(y)-1))
+    x_positions = np.linspace(start=np.min(x)-dx, stop=np.max(x)+dx, num=len(x), endpoint=False)
+    y_positions = np.linspace(start=np.min(y)-dy, stop=np.max(y)+dy, num=len(y), endpoint=False)
+    for y_index, y in enumerate(y_positions):
+        for x_index, x in enumerate(x_positions):
+            label = z[y_index, x_index]
+            text_x = x + jump_x
+            text_y = y + jump_y
+            if y_index<2: #y index starts counting from the bottom
+                ax.text(text_x, text_y, label, color='black', ha='center', va='center',fontsize=13)
+            else:
+                ax.text(text_x, text_y, label, color='white', ha='center', va='center',fontsize=13)
+#    fig.colorbar(cm.ScalarMappable(norm=colors.Normalize(min_z,max_z)))
+    pl.xlabel(xlabel,fontsize=15)
+    pl.ylabel(ylabel,fontsize=15)
+    pl.title(title)
+    pl.figtext(0.5, 0.01, figtxt, wrap=True, horizontalalignment='center', fontsize=12)
+    pl.savefig('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/'+str(figtxt),transparent=True,dpi = 1000)
+#    pl.show()
+
+a = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.4, 0.4, 0.4, 0.4, 0.4, 0.6000000000000001, 0.6000000000000001, 0.6000000000000001, 0.6000000000000001, 0.6000000000000001, 0.8, 0.8, 0.8, 0.8, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0])
+b = np.array([0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4])
+min_z,max_z,cur_z = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val.npy')
+break_vals = [5,10,15,20,40,60,80,100,120]
+for j in range(0):
+  i = break_vals[j]
+  c = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(i)+'.npy')
+  c = (c-min_z)/(max_z-min_z)
+  plot_histogram_with_text(a,b,c,(5,5),'Initial Training Proportion','Final Training Proportion', '', 'Break Value: ' + str(i),0,1)
