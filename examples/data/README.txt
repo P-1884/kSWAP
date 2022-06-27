@@ -5,3 +5,5 @@
 'Exclude logged on': This is just to match the AWS swap for the beta test which had to exclude not-logged-on users. In future runs of spacewarps these classifications can be included.
 
 'setalreadyseen3tofalse': Setting the value described in number [3] of the process_from_csv function to false.
+
+'swap_shuffled_time' includes not-logged on, from HSC, ignores already_seen flag but ignores all classifications where a subject is already in a users history.

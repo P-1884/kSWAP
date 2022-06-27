@@ -360,6 +360,7 @@ class SWAP(object):
                                              p0 = self.config.p0,
                                              classes = self.config.label_map.keys())
 #REMOVE RANDINT SECTION OF THE NEXT LINE - JUST INCLUDED FOR TESTING PURPOSES np.random.randint(0,10)!=0.
+#'time_stamp' is the time at which the classification was processed by swap. 'classification_time' is the time recorded by Zooniverse as the time the classification was made.
     if cl.subject_id not in self.users[cl.user_id].user_subject_history:
         self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id],time_stamp,classification_time)
         if online:

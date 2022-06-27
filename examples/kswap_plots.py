@@ -210,23 +210,31 @@ def gold_frequency(path):
 #    time_first_classification=[]
 #    for s in range(len(user_table)):
 #      time_first_classification.append(eval(user_table[s])[1][2])
-    min_time=date_time_convert(eval(user_table[0])[1][3])
-    max_time=0
-#    for x in tqdm(range(0,len(user_table))):
-#      for y in range(1,len(eval(user_table[x]))):
-#        min_time= np.min([min_time,date_time_convert(eval(user_table[x])[y][3])])
-#        max_time=np.max([max_time,date_time_convert(eval(user_table[x])[y][3])])
-#    max_time = 1643655438.761438; min_time = 1643125178.107527
-    max_time = 1643655420.0; min_time = 1643125140.0
+#    t1 = [date_time_convert(eval(user_table[x])[y][3]) for x in range(len(user_table)) for y in tqdm(range(1,len(eval(user_table[x]))))]
+#    t2 = [eval(user_table[x])[y][2] for x in range(len(user_table)) for y in tqdm(range(1,len(eval(user_table[x]))))]
+#    pl.scatter((t1-np.min(t1))-(t2-np.min(t2)),t2-np.min(t2))
+#    pl.show()
+    #Calculating the maximum and minimum clock-times classifications were made (converted from UTC):
+    time_array = []
+    for x in tqdm(range(0,len(user_table))):
+      for y in range(1,len(eval(user_table[x]))):
+#        time_array.append(eval(user_table[x])[y][2])
+        time_array.append(date_time_convert(eval(user_table[x])[y][3]))
+    time_array = np.array(time_array)
+    max_time = np.max(time_array)
+    min_time = np.min(time_array)
+    #time cutoff in seconds (currently 3hr):
+    time_cutoff = 3*60*60/(max_time-min_time)
+    t_max_below_cutoff = (np.max(time_array[((time_array-min_time)/(max_time-min_time))<time_cutoff])-min_time)/(max_time-min_time)
     print(min_time,max_time, max_time-min_time)
-#    user_score=(user_score-np.min(user_score))/(np.max(user_score)-np.min(user_score))
-    fig, ax = pl.subplots(1,2,figsize=(28,8))
-    #time cutoff in seconds (currently 12hr):
-    time_cutoff = 5*60*60/(max_time-min_time)
+    fig, ax = pl.subplots(1,2,figsize=(14,5))
     #classification cutoff for plot below:
     c_cutoff = 200
     N_less = np.zeros(c_cutoff);N_more = np.zeros(c_cutoff)
     N_many_classifications=0
+    x_plot_vals = [];y_plot_vals = [];z_plot_vals = []
+    #Iterates making a list of x_i=[classification_number];y_i=[cumulative N. training images];t_i = [classification time] for each user.
+    #y_i=[cumulative N. training images] then becomes cumulative training rate.
     for i in tqdm(range(0,len(user_table))):
       x_i = [];y_i = [];t_i = []
 #Has to start at 1 as the zeroth index is the prior:
@@ -238,6 +246,7 @@ def gold_frequency(path):
               y_i.append(0)
             x_i.append(j)
             t_i.append(date_time_convert(eval(user_table[i])[j][3]))
+#            t_i.append(eval(user_table[i])[j][2])
         else:
             if eval(user_table[i])[j][0] in gold_ids:
               y_i.append(y_i[len(y_i)-1]+1)
@@ -245,25 +254,33 @@ def gold_frequency(path):
               y_i.append(y_i[len(y_i)-1])
             x_i.append(j)
             t_i.append(date_time_convert(eval(user_table[i])[j][3]))
+#            t_i.append(eval(user_table[i])[j][2])
       x_i = np.array(x_i)
       y_i = np.array(y_i)/x_i
       t_i = np.array(t_i)
+      #Normalise the classification time:
       t_i = (t_i-min_time)/(max_time-min_time)
-      ax[0].scatter(x_i[t_i<time_cutoff],y_i[t_i<time_cutoff], c=cm.cool(t_i[t_i<time_cutoff]), edgecolor='none',s=15,alpha=1)
+#      x_plot_vals.extend(list(x_i));y_plot_vals.extend(list(y_i));z_plot_vals.extend(list(t_i))
+#      ax[0].plot(x_i,y_i, color='gray',alpha=0.3)
+      x_plot_vals.extend(list(x_i[t_i<time_cutoff]));y_plot_vals.extend(list(y_i[t_i<time_cutoff]));z_plot_vals.extend(list(t_i[t_i<time_cutoff]))
       ax[0].plot(x_i[t_i<time_cutoff],y_i[t_i<time_cutoff], color='gray',alpha=0.3)
-      if True:
-        c_cutoff_i = np.min([c_cutoff,len(y_i)])
-        N_many_classifications +=1
-        N_more[0:c_cutoff_i] += ((y_i[0:c_cutoff]>expected_training_fraction_func(np.arange(1,1+c_cutoff_i)))*(t_i[0:c_cutoff]<time_cutoff)).astype('int')
-        N_less[0:c_cutoff_i] += ((y_i[0:c_cutoff]<expected_training_fraction_func(np.arange(1,1+c_cutoff_i)))*(t_i[0:c_cutoff]<time_cutoff)).astype('int')
-    More_less_ratio = N_more/N_less
+#      if True:
+#        c_cutoff_i = np.min([c_cutoff,len(y_i)])
+#        N_many_classifications +=1
+#        N_more[0:c_cutoff_i] += ((y_i[0:c_cutoff]>expected_training_fraction_func(np.arange(1,1+c_cutoff_i)))*(t_i[0:c_cutoff]<time_cutoff)).astype('int')
+#        N_less[0:c_cutoff_i] += ((y_i[0:c_cutoff]<expected_training_fraction_func(np.arange(1,1+c_cutoff_i)))*(t_i[0:c_cutoff]<time_cutoff)).astype('int')
+ #   More_less_ratio = N_more/N_less
+    x_plot_vals = np.array(x_plot_vals);y_plot_vals = np.array(y_plot_vals);z_plot_vals = np.array(z_plot_vals)
+    norm_0 = colors.Normalize((max_time-min_time)*np.nanmin(z_plot_vals),(max_time-min_time)*np.nanmax(z_plot_vals))
+    ax[0].scatter(x_plot_vals[z_plot_vals<time_cutoff],y_plot_vals[z_plot_vals<time_cutoff],c=(max_time-min_time)*z_plot_vals[z_plot_vals<time_cutoff],norm=norm_0,cmap = 'cool',s=15,alpha=0.5)
+    #Calculating training rate if follows assigned training frequency:
     for f in range(len(user_table)):
         ax[1].plot(np.arange(1,c_cutoff+1),random_training_trial()[0:c_cutoff],alpha=0.2,c='g')
-    norm = pl.Normalize(0, 1)
-    cmap = pl.cm.cool
-    sm = pl.cm.ScalarMappable(norm=norm, cmap=cmap)
-    cbar = pl.colorbar(sm, ax=ax[0], orientation='vertical')
-    cbar = pl.colorbar(sm, ax=ax[1], orientation='vertical')
+    sm_0 = pl.cm.ScalarMappable(norm=norm_0, cmap=pl.cm.cool)
+    sm_1 = pl.cm.ScalarMappable(norm=pl.Normalize(0, 1), cmap=pl.cm.cool)
+    cbar = pl.colorbar(sm_0, ax=ax[0], orientation='vertical')
+    cbar.set_label('Time of classification since start/seconds')
+    cbar = pl.colorbar(sm_1, ax=ax[1], orientation='vertical')
     for i in range(2):
         ax[i].plot(np.arange(1,800),expected_training_fraction_func(np.arange(1,800)),c='k')
         ax[i].set_xlabel('Number of classifications made by user')
@@ -271,28 +288,37 @@ def gold_frequency(path):
         ax[i].set_xlim(0,200)
         ax[i].set_ylim(0,0.8)
     pl.show()
+    pl.hist((max_time-min_time)*z_plot_vals/(60*60),bins=100)
+    pl.xlabel('Time of classification since start/hours')
+    pl.ylabel('Counts')
+    pl.show()
+    pl.hist((max_time-min_time)*z_plot_vals[z_plot_vals<time_cutoff]/(60),bins=100)
+    pl.xlabel('Time of classification since start/minutes')
+    pl.ylabel('Counts')
+    pl.show()
 #    for r in range(N_many_classifications):
-    pl.plot(More_less_ratio,c='b')
-    for t in range(10):
-        N_less_ideal = np.zeros(c_cutoff);N_more_ideal = np.zeros(c_cutoff)
-        for r in range(1000):
+#    pl.plot(More_less_ratio,c='b')
+#    for t in range(10):
+#        N_less_ideal = np.zeros(c_cutoff);N_more_ideal = np.zeros(c_cutoff)
+#        for r in range(1000):
         #The oscillations are from the ideal line crossing the thick 'main lines' on the plot (ie the lines where a user doesnt see training images for a long period).
         #This is why the oscillations get slower (the thick lines start off steep then flatten out, hence the ideal line takes longer to cross the later ones)
-            random_trial = random_training_trial()
-            N_more_ideal += (random_trial[0:c_cutoff]>expected_training_fraction_func(np.arange(1,1+c_cutoff))).astype('int')
-            N_less_ideal += (random_trial[0:c_cutoff]<expected_training_fraction_func(np.arange(1,1+c_cutoff))).astype('int')
-        More_less_ratio_ideal = N_more_ideal/N_less_ideal
-        pl.plot(More_less_ratio_ideal,'--',c='b',alpha=0.3)
-    pl.xlabel('Number of classifications made by user')
-    pl.ylabel('Ratio of N. seen over/under set abundance')
-    pl.legend(['M/L beta','M/L ideal'])
-    txt='Only considers classifications made in the first 12 hours (excluding not logged-in)'
-    pl.figtext(0.5, 0.01, txt, wrap=True, horizontalalignment='center', fontsize=12)
-    pl.show()
+#            random_trial = random_training_trial()
+#            N_more_ideal += (random_trial[0:c_cutoff]>expected_training_fraction_func(np.arange(1,1+c_cutoff))).astype('int')
+#            N_less_ideal += (random_trial[0:c_cutoff]<expected_training_fraction_func(np.arange(1,1+c_cutoff))).astype('int')
+#        More_less_ratio_ideal = N_more_ideal/N_less_ideal
+#        pl.plot(More_less_ratio_ideal,'--',c='k',alpha=0.3)
+#    pl.xlabel('Number of classifications made by user')
+#    pl.ylabel('Ratio of N. seen over/under set abundance')
+#    pl.legend(['M/L beta','M/L ideal'])
+#    txt='Only considers classifications made in the first 12 hours (excluding not logged-in)'
+#    pl.figtext(0.5, 0.01, txt, wrap=True, horizontalalignment='center', fontsize=12)
+#    pl.show()
 
 #gold_frequency('./data/swap_bFINAL_simul_AWS.db')
 #gold_frequency('./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db')
 #Just looking at first ~12 hours of beta test to see how many golds were shown in early stages. This is also better for colour of scatter points as they are less bunched up near early times (for a long run, most classifications were in the first day, but plotting with uniform time up to say ~7 days).
+#GOLD FREQUENCY IS SET DIFFERENTLY FOR NOT-LOGGED-ON USERS (IE JUST SEE NATURAL RATIOS) SO CANT USE THIS:
 #gold_frequency('/Users/hollowayp/Documents/swap beta25 backup3.db')
 
 def score_plots(path='./data/swap_bFINAL_hardsimsaretest.db'):
@@ -1091,7 +1117,8 @@ def optimising_training_frequency(path):
 #Subtracting 1 as don't want to include the prior in the history:
   for i in tqdm(range(len(user_history))):
     N_seen.append(len(eval(user_history[i]))-1)
-  N_seen_hist = np.histogram(N_seen,bins=np.linspace(0,np.max(N_seen),np.max(N_seen)+1))[0]
+  #Needs to be np.linspace(1,np.max(N_seen)+1,np.max(N_seen)+1) (NB starts from 1) here as, from testing, looks like the final bin would group the final two classification bins together if there were just np.max(N_seen) bins. Eg if N_seen went up to 9 (inclusive), would need bins which were np.linspace(1,9+1,9+1) (= [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) as final bin is then 9(inclusive)-10.
+  N_seen_hist = np.histogram(N_seen,bins=np.linspace(1,np.max(N_seen)+1,np.max(N_seen)+1))[0]
   N_seen_hist = [np.sum(N_seen_hist[i:len(N_seen_hist)]) for i in range(len(N_seen_hist))]
 #How fast the user scores increase as they see more training images:
   y_1 = [0., 0.3968254,  0.59090909, 0.66153846, 0.69918699, 0.74912892,0.78658537, 0.77060932, 0.78181818, 0.81818182, 0.83333333,0.85754986,0.8989547,  0.90095238, 0.87162162, 0.8573975,  0.86868687, 0.88516746,0.91212121, 0.92857143, 0.9476584,  0.960047,0.96846847, 0.95444444,0.9337059,  0.93922127, 0.94912846, 0.94702998, 0.95277778, 0.94865375,0.96474359, 0.96784219, 0.97285068,0.96293436, 0.96846847, 0.97370343,0.97866287, 0.97655678, 0.98494709, 0.98885017, 0.99455782, 1.]
@@ -1137,18 +1164,22 @@ def optimising_training_frequency(path):
 #Product of the number of people who see the ith image, the fraction of these people for whom this image is a test image, and the information gained by a classification given these people have seen an expected number of training images and thus have a given skill. Note this is the expected info_gained from a average_user, rather than the average of the info_gained from all users. For the latter, see further below.
         info_tot[i] = (N_seen_hist[i]*(1-example_training_freq(i,break_val,frac,current))*info_gained(i,break_val,frac,current))
       return np.sum(info_tot)
-#  N_seen_hist=np.array(N_seen_hist)
-#  pl.plot((N_seen_hist-np.min(N_seen_hist))/(np.max(N_seen_hist)-np.min(N_seen_hist)))
+  N_seen_hist=np.array(N_seen_hist)
+#  pl.plot(np.linspace(1,len(N_seen_hist),len(N_seen_hist)),(N_seen_hist-np.min(N_seen_hist))/(np.max(N_seen_hist)-np.min(N_seen_hist)))
 #  q = [];r = []
 #  for v in tqdm(range(len(N_seen_hist))):
-#    q.append(1-example_training_freq(v))
-#    r.append(info_gained(v+1,[0.8,0.2]))
+  #v is the index in N_seen hist (which starts at the first image). v=0 corresponds to the first image, v=2 the second etc.
+  #Using current training rate values:
+#    q.append(1-example_training_freq(v+1,np.nan, np.nan, True))
+#    r.append(info_gained(v+1,np.nan, np.nan, True))
 #  q = np.array(q)
 #  r = np.array(r)
-#  pl.plot(q)
-#  pl.plot((r-np.min(r))/(np.max(r)-np.min(r)))
-#  pl.plot(q*(r-np.min(r))*(N_seen_hist-np.min(N_seen_hist))/((np.max(r)-np.min(r))*(np.max(N_seen_hist)-np.min(N_seen_hist))),c='k')
-#  pl.legend(['N_users','Test freq','Info gained'])
+###  pl.plot(np.linspace(1,len(r),len(r)),q)
+#  pl.plot(np.linspace(1,len(r),len(r)),(r-np.min(r))/(np.max(r)-np.min(r)),c='g')
+#  tot_info_gained = q*(r-np.min(r))*(N_seen_hist-np.min(N_seen_hist))/((np.max(r)-np.min(r))*(np.max(N_seen_hist)-np.min(N_seen_hist)))
+#  pl.plot(np.linspace(1,len(r),len(r)),tot_info_gained,c='k')
+#  pl.legend(['N. users','Info gained/user','Total info gained'])
+#  pl.fill_between(x= np.linspace(1,len(r),len(r)),y1= tot_info_gained,color= "k",alpha= 0.3)
 #  pl.xlabel('Image number')
 #  pl.ylabel('Normalised Scale')
 #  pl.show()
@@ -1219,7 +1250,7 @@ def optimising_training_frequency(path):
           training_indx =  np.concatenate((np.random.choice([0,1],size=16,p = [2/3,1/3]),np.random.choice([0,1],size=25,p = [4/5,1/5]),np.random.choice([0,1],size=N-16-25,p = [9/10,1/10])))
           return training_indx,np.cumsum(training_indx)
 
-  N_seen_hist_norm = np.histogram(N_seen,bins=np.linspace(0,np.max(N_seen),np.max(N_seen)+1),density=True)[0]
+  N_seen_hist_norm = np.histogram(N_seen,bins=np.linspace(0,np.max(N_seen)+1,np.max(N_seen)+2),density=True)[0]
   
   #Samples random users, calculates the total information they provide based on the number of images they saw, how fast the typical user score increases with training images, and the number of test images seen. Returns I_total = Sum[Info_gained_from_image*BOOL(Test_image?)]
   def random_user_sampling(iteration,frac,break_val,current=False):
@@ -1265,7 +1296,7 @@ def optimising_training_frequency(path):
         for p in range(5):
           frac_list.append([0.2*t,0.1*p])
       Z_list = []
-      N_runs = 10
+      N_runs = 100000
       for u in tqdm(range(len(break_val_list))):
           X=[];Y=[];Z=[]
           for k in range(len(frac_list)):
@@ -1276,7 +1307,7 @@ def optimising_training_frequency(path):
           print(X)
           print(Y)
           print(Z)
-          np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(break_val_list[u]),Z)
+#          np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(break_val_list[u]),Z)
 #      Z_current = np.min(Z_list) #Remove this line once calculated actual Z_current
 #      Z_current = info_gained_tot(np.nan,frac,True)
       Z_current = random_user_sampling(N_runs,np.nan,np.nan,current=True)
@@ -1302,7 +1333,7 @@ def optimising_training_frequency(path):
           ax[f,g].set_xlabel('Initial Training Fraction')
           ax[f,g].set_ylabel('Final Training Fraction')
       print(Z_min,Z_max,Z_current)
-      np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val',np.array([Z_min,Z_max,Z_current]))
+#      np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val',np.array([Z_min,Z_max,Z_current]))
       pl.show()
     
 #  def calculate_current_info():
@@ -1313,7 +1344,7 @@ def optimising_training_frequency(path):
   plot_info()
 #  calculate_current_info()
 
-optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest.db')
+#optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest.db')
 #optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db')
 
 import json
@@ -1420,7 +1451,7 @@ a = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.4, 0.4, 0.4, 0.4, 0.4, 0.60000000000000
 b = np.array([0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4])
 min_z,max_z,cur_z = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val.npy')
 break_vals = [5,10,15,20,40,60,80,100,120]
-for j in range(0):
+for j in range(len(break_vals)):
   i = break_vals[j]
   c = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(i)+'.npy')
   c = (c-min_z)/(max_z-min_z)
