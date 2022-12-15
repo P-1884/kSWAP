@@ -158,23 +158,61 @@ def user_class_hist(path='./data/swap.db'):
     bin_mids = [((bins[i]+bins[i+1])/2) for i in range(len(bins)-1)]
     bin_widths = [(bins[i+1]-bins[i]) for i in range(len(bins)-1)]
     N_class_per_bin = bin_mids*N_seen_hist[0]
-    fig, ax = pl.subplots(2,figsize=(10,7))
+    fig, ax = pl.subplots(1,2,figsize=(15,5))
     ax[1].bar(bin_mids,N_class_per_bin,width = bin_widths)
-    ax[1].set_xlabel('Number of Classifications')
-    ax[1].set_ylabel('Total number of classifications in this bin')
+    ax[1].set_xlabel('$N_{class}$',fontsize = 18)
+    ax[1].set_ylabel(r'$N_{class} \times N_{users}$',fontsize = 18)#Need the 'r' before the string so it correctly reads the \times latex.
     ax[0].bar(bin_mids,N_seen_hist[0],width = bin_widths)
-    ax[0].set_xlabel('Number of Classifications')
-    ax[0].set_ylabel('Number of users')
+    ax[0].set_xlabel('$N_{class}$',fontsize = 18)
+    ax[0].set_ylabel('$N_{users}$',fontsize = 18)
     ax[1].set_yscale('log')
     ax[1].set_xscale('log')
+    ax[1].set_ylim(1,10**5)
     ax[0].set_yscale('log')
     ax[0].set_xscale('log')
+    ax[0].tick_params(axis='both', which='major', labelsize=15)
+    ax[1].tick_params(axis='both', which='major', labelsize=15)
     pl.show()
-    print(N_seen_hist)
-
 #user_class_hist(path='./data/swap_hsc_csv_online.db')
-#user_class_hist()
 
+def overall_classification_efficiency(path):
+    subject_table = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])
+    test_subjects =pd.DataFrame.from_dict(read_sqlite(path)['subjects'])[subject_table['gold_label']==-1]
+    test_subject_histories = np.array(test_subjects['history'])
+    N_class =0
+    for i in tqdm(range(len(test_subject_histories))):
+        N_class+= len(eval(test_subject_histories[i]))-1 #minus one to remove the prior
+    #Now finding average number of classifications/subject (now including training subjects)
+    subject_table = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])
+    subject_histories = np.array(subject_table['history'])
+    N_class_all =0
+    for i in tqdm(range(len(subject_histories))):
+        N_class_all += len(eval(subject_histories[i]))-1 #minus one to remove the prior
+    #Including training subjects (this one is *not* the best one to use, as training subjects aren't retired):
+    print(N_class_all/len(subject_table))
+    #Use this one instead:
+    print(N_class/len(test_subjects))
+
+#overall_classification_efficiency(path='./data/swap_hsc_csv_online.db')
+#This one for the beta test will give the wrong efficiency as it ignores whether subjects are retired when reaching the retirement thresholds. We want to calculate the efficiency assuming everything (retirement) is working as it should.
+#overall_classification_efficiency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest.db')
+
+def overall_classification_efficiency_des(path):
+    p_real , p_bogus= thresholds_setting()
+    subject_table = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])
+    test_subjects =pd.DataFrame.from_dict(read_sqlite(path)['subjects'])[subject_table['gold_label']==-1]
+    test_subject_histories = np.array(test_subjects['history'])
+    N_class=0
+    for i in range(len(test_subject_histories)):
+        test_history_i =eval(test_subject_histories[i])
+        test_history_i =test_history_i[0:np.min([30,len(test_history_i)])]#Removing all classifications beyond the 30th one (when they should have been retired)
+        test_history_i_score = np.array([(test_history_i[j])[3] for j in range(len(test_history_i))]) #Finding the running scores of this test subject
+        test_history_i_score = test_history_i_score[test_history_i_score>=p_bogus] #Only counting classifications above the lower score threshold.
+        N_class+=len(test_history_i_score)
+    print(N_class/len(test_subjects),N_class)
+    
+#overall_classification_efficiency_des('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest.db')
+#overall_classification_efficiency_des('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_simul_AWS.db')
 #Function includes *all* training images, not just those of one type or only easy ones. Note this calculates the *fraction* of all images seen which are training (different to other similar function below)
 def expected_training_fraction_func(X):
     V = []
@@ -317,6 +355,7 @@ def gold_frequency(path):
 
 #gold_frequency('./data/swap_bFINAL_simul_AWS.db')
 #gold_frequency('./data/swap_bFINAL_hardsimsaretraining_excludenotloggedon.db')
+#gold_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretraining_excludenotloggedon_changingalreadyseen3tofalse.db')
 #Just looking at first ~12 hours of beta test to see how many golds were shown in early stages. This is also better for colour of scatter points as they are less bunched up near early times (for a long run, most classifications were in the first day, but plotting with uniform time up to say ~7 days).
 #GOLD FREQUENCY IS SET DIFFERENTLY FOR NOT-LOGGED-ON USERS (IE JUST SEE NATURAL RATIOS) SO CANT USE THIS:
 #gold_frequency('/Users/hollowayp/Documents/swap beta25 backup3.db')
@@ -540,7 +579,6 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
     # max_seen is set by subject with max number of classifications
     max_seen = 1
     subjects=len(set(subject_id))
-
     print('Plotting from ' + str(subjects) + ' subjects of which ' + str(retired) + ' are retired and '  + str(len(histories_df.loc[histories_df['history']!='[["_", "_", "_", 0.0005, "_", "_"]]'])) + ' are (uniquely) classified')
     subjects_final = []
     subjects_history_final=[]
@@ -577,6 +615,9 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
     p_real , p_bogus= thresholds_setting()
 
     def plotting_traj(subjects, subjects_history_final,timer=False):
+        #Calculating the number of false/true positives/negatives from the training sets: Not accounting for majority voting or anything here as the training subjects are not retired so majority-voting won't apply to them. Count a 'positive' as a score above the prior, and a 'negative' as a score below the prior.
+        FP_number = 0;TP_number=0;FN_number=0;TN_number=0
+        prior_value=prior_setting()
         from config import Config as config_0
         fig, ax = pl.subplots(figsize=(3,3), dpi=300)
         ax.tick_params(labelsize=5)
@@ -614,10 +655,20 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
                 history = np.array(subjects_history_final[j])
                 y = np.arange(len(history) + 1)-1
                 history = np.append(prior_setting(), history)
-#                if j not in should_be_retired_list:
-#                    ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
-#                    ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
-#                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                if golds_final[j]==1:
+                    if history[len(history)-1]<prior_value:
+                        FN_number+=1
+                    if history[len(history)-1]>=prior_value: #putting an equality here as would be manually checking these ones anyway, so seems reasonable
+                        TP_number+=1
+                if golds_final[j]==0:
+                    if history[len(history)-1]<prior_value:
+                        TN_number+=1
+                    if history[len(history)-1]>=prior_value: #putting an equality here as would be manually checking these ones anyway, so seems reasonable
+                        FP_number+=1
+                if j not in should_be_retired_list:
+                    ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
+                    ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
+                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
                 if j in should_be_retired_list:
                   ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
                   ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,c='k')
@@ -635,6 +686,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
                 patches.append(patch)
             ax.legend(handles=patches, loc='lower right', framealpha=1.0,prop={'size':5})
             fig.tight_layout()
+            print('TP: ',TP_number,' FP: ',FP_number,' TN: ', TN_number, ' FN: ',FN_number,' Total: ',str(TP_number+FP_number+TN_number+FN_number))
             pl.show()
         else:
             ax.set_xlim(p_min, p_max)
@@ -1060,30 +1112,36 @@ def Information_gained(path):
 #Information_gained('./data/swap_hsc_csv_online.db')
 
 def compare_shuffled_swaps(db_path_0,db_path_shuffled_swaps):
+    #Just asserting this as a reminder to change the plot titles if i change these paths:
+    if True:
+        assert db_path_shuffled_swaps==['./data/swap_shuffled_N100.db','./data/swap_shuffled_N10000.db','./data/swap_shuffled_N1000000.db']
+        titles = ['N = $10^2$','N = $10^4$','N = $10^6$']
     subject_scores_0 = np.log10(np.array(pd.DataFrame.from_dict(read_sqlite(db_path_0)['subjects'])['score']).astype('float32'))
     subject_subj_id_0= list(pd.DataFrame.from_dict(read_sqlite(db_path_0)['subjects'])['subject_id'])
-    fig, ax = pl.subplots(1,len(db_path_shuffled_swaps),figsize=(8*len(db_path_shuffled_swaps),7))
-    for f in range(len(db_path_shuffled_swaps)):
-      print(f)
-      subject_scores_i = np.log10(np.array(pd.DataFrame.from_dict(read_sqlite(db_path_shuffled_swaps[f])['subjects'])['score']).astype('float32'))
+    fig, ax = pl.subplots(2,len(db_path_shuffled_swaps),figsize=(8*len(db_path_shuffled_swaps),7))
     for i in range(len(db_path_shuffled_swaps)):
         subject_scores_i = np.log10(np.array(pd.DataFrame.from_dict(read_sqlite(db_path_shuffled_swaps[i])['subjects'])['score']).astype('float32'))
         subject_subj_id_i = list(pd.DataFrame.from_dict(read_sqlite(db_path_shuffled_swaps[i])['subjects'])['subject_id'])
         score_0_list = np.zeros(len(subject_scores_0));score_1_list = np.zeros(len(subject_scores_0))
 #Subject id's may not be in the same order in each database table so need to get correct score for corresponding subject id:
         for k in tqdm(range(len(subject_scores_0))):
-          score_0_list[k]= subject_scores_0[k]
-          score_1_list[k]= subject_scores_i[subject_subj_id_i.index(subject_subj_id_0[k])]
-        h = ax[i].hist2d(score_0_list,score_1_list,bins=np.linspace(-13,0,27),norm=mpl.colors.LogNorm())
-        ax[i].set_xlabel('Unshuffled database: log10(score)')
-        ax[i].set_ylabel('Shuffled database: log10(score)')
-        ax[i].set_title(db_path_shuffled_swaps[i])
+          score_0_list[k]= subject_scores_0[k] #scores of db_0
+          score_1_list[k]= subject_scores_i[subject_subj_id_i.index(subject_subj_id_0[k])] #scores of db_1, in order of db_0
+        bins_x,bins_y = np.arange(-13,0,0.1),np.arange(-3,3,0.1)
+        h = ax[0,i].hist2d(score_0_list,score_1_list-score_0_list,bins=[bins_x,bins_y],norm=mpl.colors.LogNorm())
+        ax[0,i].set_xlabel('log10($s$)')
+        ax[0,i].set_ylabel('log10($s$/$s_{0}$)')
+        ax[0,i].set_title(titles[i])
+        ax[0,i].set_aspect('equal')
 #This plots the colourbar - the h[3] index is just where the colour attribute is stored
-        pl.colorbar(h[3],ax=ax[i])
+        pl.colorbar(h[3],ax=ax[0,i],fraction=0.046, pad=0.04)
+        ax[1,i].set_xlabel('log10($s$/$s_{0}$)')
+        ax[1,i].set_ylabel('Counts')
+        ax[1,i].hist(score_1_list-score_0_list,bins=bins_y)
     pl.show()
 
 #compare_shuffled_swaps('./data/swap_shuffled_0.db',\
-#                        ['./data/swap_shuffled_N100.db','./data/swap_shuffled_N1000.db','./data/swap_shuffled_N10000.db','./data/swap_shuffled_N100000.db','./data/swap_shuffled_N1000000.db'])
+#                        ['./data/swap_shuffled_N100.db','./data/swap_shuffled_N10000.db','./data/swap_shuffled_N1000000.db'])
 
 
 def optimising_training_frequency(path):
@@ -1165,23 +1223,28 @@ def optimising_training_frequency(path):
         info_tot[i] = (N_seen_hist[i]*(1-example_training_freq(i,break_val,frac,current))*info_gained(i,break_val,frac,current))
       return np.sum(info_tot)
   N_seen_hist=np.array(N_seen_hist)
+#  fig = pl.figure(figsize=(10, 7))
+#  ax = fig.add_subplot(111)
 #  pl.plot(np.linspace(1,len(N_seen_hist),len(N_seen_hist)),(N_seen_hist-np.min(N_seen_hist))/(np.max(N_seen_hist)-np.min(N_seen_hist)))
-#  q = [];r = []
-#  for v in tqdm(range(len(N_seen_hist))):
+  q = [];r = []
+  for v in tqdm(range(len(N_seen_hist))):
   #v is the index in N_seen hist (which starts at the first image). v=0 corresponds to the first image, v=2 the second etc.
   #Using current training rate values:
-#    q.append(1-example_training_freq(v+1,np.nan, np.nan, True))
-#    r.append(info_gained(v+1,np.nan, np.nan, True))
-#  q = np.array(q)
-#  r = np.array(r)
+    q.append(1-example_training_freq(v+1,np.nan, np.nan, True))
+    r.append(info_gained(v+1,np.nan, np.nan, True))
+  q = np.array(q)
+  r = np.array(r)
 ###  pl.plot(np.linspace(1,len(r),len(r)),q)
 #  pl.plot(np.linspace(1,len(r),len(r)),(r-np.min(r))/(np.max(r)-np.min(r)),c='g')
-#  tot_info_gained = q*(r-np.min(r))*(N_seen_hist-np.min(N_seen_hist))/((np.max(r)-np.min(r))*(np.max(N_seen_hist)-np.min(N_seen_hist)))
+  tot_info_gained = q*(r-np.min(r))*(N_seen_hist-np.min(N_seen_hist))/((np.max(r)-np.min(r))*(np.max(N_seen_hist)-np.min(N_seen_hist)))
 #  pl.plot(np.linspace(1,len(r),len(r)),tot_info_gained,c='k')
-#  pl.legend(['N. users','Info gained/user','Total info gained'])
+#  pl.legend(['N. users','Infomation gained/user','Total infomation gained'],fontsize = 15)
 #  pl.fill_between(x= np.linspace(1,len(r),len(r)),y1= tot_info_gained,color= "k",alpha= 0.3)
-#  pl.xlabel('Image number')
-#  pl.ylabel('Normalised Scale')
+#  pl.xlabel('Classification number',fontsize = 18)
+#  pl.ylabel('Arbitrary Scale',fontsize =18)
+#  ax.tick_params(axis='both', which='major', labelsize=15)
+#  pl.xlim(0,1000)
+#  pl.ylim(0,1.01)
 #  pl.show()
   def info_from_av_user():
 #      break_val_list = [5,10,15,20,40,60,80,100,120]
@@ -1253,69 +1316,78 @@ def optimising_training_frequency(path):
   N_seen_hist_norm = np.histogram(N_seen,bins=np.linspace(0,np.max(N_seen)+1,np.max(N_seen)+2),density=True)[0]
   
   #Samples random users, calculates the total information they provide based on the number of images they saw, how fast the typical user score increases with training images, and the number of test images seen. Returns I_total = Sum[Info_gained_from_image*BOOL(Test_image?)]
-  def random_user_sampling(iteration,frac,break_val,current=False):
-     tot_info = 0
-     N_array = np.random.choice(np.arange(len(N_seen_hist_norm)), size=iteration, replace=True, p=N_seen_hist_norm)
-     if current==False:
-         for i in range(iteration):
-            N = N_array[i]
-            training_indx,cumul_training_indx = user_training_sample(N,break_val,frac,current)
-    #        print('Cumulative training index')
-    #        print(cumul_training_indx)
-    #        print('user convergence func')
-    #        print(user_convergence_func(cumul_training_indx))
-    #        print('User skill')
-            M_LL = ((M_LL_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
-            M_NN = ((M_NN_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
-    #        print(M_LL)
-    #        print(M_NN)
-    #        print('average info')
-#Returns I_total = Sum[Info_gained_from_image*BOOL(Test_image?)]
-            av_info =np.sum(av_dI(0.5,M_LL,M_NN)*(1-training_indx))
-            tot_info+=av_info
-     else:
-        for i in tqdm(range(iteration)):
-            N = N_array[i]
-            training_indx,cumul_training_indx =user_training_sample(N,break_val,frac,current)
-            M_LL = ((M_LL_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
-            M_NN = ((M_NN_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
-            av_info =np.sum(av_dI(0.5,M_LL,M_NN)*(1-training_indx))
-            tot_info+=av_info
-     return tot_info
+  def random_user_sampling(N_sample,iteration,frac,break_val,current=False):
+     tot_info_list = np.zeros([N_sample])
+     for k in (range(N_sample)):
+         N_array = np.random.choice(np.arange(len(N_seen_hist_norm)), size=iteration, replace=True, p=N_seen_hist_norm)
+         tot_info = 0
+         if current==False:
+             for i in range(iteration):
+                N = N_array[i]
+                training_indx,cumul_training_indx = user_training_sample(N,break_val,frac,current)
+                M_LL = ((M_LL_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+                M_NN = ((M_NN_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+    #Returns I_total = Sum[Info_gained_from_image*BOOL(Test_image?)]
+                av_info =np.sum(av_dI(0.5,M_LL,M_NN)*(1-training_indx))
+                tot_info+=av_info
+         else:
+            cumul_trainning_list = []
+            for i in (range(iteration)):
+                N = N_array[i]
+                training_indx,cumul_training_indx =user_training_sample(N,break_val,frac,current)
+                M_LL = ((M_LL_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+                M_NN = ((M_NN_final-0.5)*user_convergence_func(cumul_training_indx))+0.5
+                av_info =np.sum(av_dI(0.5,M_LL,M_NN)*(1-training_indx))
+                tot_info+=av_info
+         tot_info_list[k]=tot_info
+#     print('Mean, std:')
+#     print(np.mean(tot_info_list),np.std(tot_info_list))
+     return np.mean(tot_info_list),np.std(tot_info_list)
 
   
   def plot_info():
-      break_val_list = [5,10,15,20,40,60,80,100,120]
+      break_val_list = [80,90]#[0,5,10,15,20,40,60,80,200]
       break_val_colors = ['Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
                           'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
                           'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
       fig, ax = pl.subplots(3,3,figsize=(10,10))
       frac_list=[[0.1,0.2],[0.2,0.3]]
       frac_list=[]
-      for t in range(1,6):
+      for t in range(0,6):
         for p in range(5):
           frac_list.append([0.2*t,0.1*p])
       Z_list = []
-      N_runs = 100000
+      Z_list_std_dev = []
+      #Conducts N_sample test-runs, each involving N_users 'users':
+      N_sample = 100
+      N_users = 10000
       for u in tqdm(range(len(break_val_list))):
-          X=[];Y=[];Z=[]
-          for k in range(len(frac_list)):
+          X=[];Y=[];Z=[];Z_std_dev = []
+          for k in tqdm(range(len(frac_list))):
             frac = frac_list[k]
-            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(N_runs,frac,break_val_list[u]))
-#            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(100000,frac,break_val_list[u]))
+            Z_i,Z_std_dev_i =random_user_sampling(N_sample,N_users,frac,break_val_list[u])
+            X.append(frac[0]);Y.append(frac[1]);Z.append(Z_i);Z_std_dev.append(Z_std_dev_i)
+#            X.append(frac[0]);Y.append(frac[1]);Z.append(random_user_sampling(N_sample,100000,frac,break_val_list[u]))
           Z_list.append(Z)
+          Z_list_std_dev.append(Z_std_dev)
           print(X)
           print(Y)
           print(Z)
-#          np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(break_val_list[u]),Z)
+          np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(break_val_list[u]),Z)
+          np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_std_dev'+str(break_val_list[u]),Z_std_dev)
 #      Z_current = np.min(Z_list) #Remove this line once calculated actual Z_current
 #      Z_current = info_gained_tot(np.nan,frac,True)
-      Z_current = random_user_sampling(N_runs,np.nan,np.nan,current=True)
-      Z_list = np.array(Z_list)
+      Z_current,Z_current_std_dev = random_user_sampling(N_sample,N_users,np.nan,np.nan,current=True)
+      Z_list = np.array(Z_list);Z_list_std_dev = np.array(Z_list_std_dev)
       Z_min = np.min([np.min(Z_list),Z_current]); Z_max = np.max([np.max(Z_list),Z_current])
+      try:
+        assert Z_min==0
+      except:
+        print('Z_MIN IS NOT ZERO. STANDARD DEVIATIONS MAY BE A BIT DODGY AS THEY ARE SQUISHED BETWEEN 0 AND 1')
       txt='Current value: ' + str(np.round((Z_current-Z_min)/(Z_max-Z_min),2))
       pl.figtext(0.5, 0.01, txt, wrap=True, horizontalalignment='center', fontsize=12)
       Z_list = (Z_list-Z_min)/(Z_max-Z_min)
+      Z_list_std_dev = (Z_list_std_dev-Z_min)/(Z_max-Z_min)
       for u in range(len(break_val_list)):
           if u<3:
             f = 0; g = u
@@ -1324,28 +1396,32 @@ def optimising_training_frequency(path):
           else:
             f = 2;g = u-6
           Z = Z_list[u]
+          Z_std_dev = Z_list_std_dev[u]
           for r in range(len(frac_list)):
-            ax[f,g].annotate(str(np.round(Z[r],2)), (X[r],Y[r]))
+            ax[f,g].annotate(str(np.round(Z[r],2)) + '$\pm$'+ str(np.round(Z_std_dev[r],2)), (X[r],Y[r]))
           Z = 0.2+0.8*Z
           ax[f,g].scatter(X,Y,c=Z,cmap=break_val_colors[u])
           ax[f,g].axis('scaled')
           ax[f,g].set_title('Break Value: ' + str(break_val_list[u]))
           ax[f,g].set_xlabel('Initial Training Fraction')
           ax[f,g].set_ylabel('Final Training Fraction')
-      print(Z_min,Z_max,Z_current)
-#      np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val',np.array([Z_min,Z_max,Z_current]))
+      print(Z_min,Z_max,Z_current,Z_current_std_dev)
+      np.save('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val',np.array([Z_min,Z_max,Z_current,Z_current_std_dev]))
       pl.show()
     
 #  def calculate_current_info():
 #    #Note number of iterations will change info value, so need to make sure it is the same as above:
-#    print(random_user_sampling(100000,[0,0],0,current=True))
-#    print(random_user_sampling(100,[0,0],0,current=True))
+#    print(random_user_sampling(N_sample,100000,[0,0],0,current=True))
+#    print(random_user_sampling(N_sample,100,[0,0],0,current=True))
 
   plot_info()
 #  calculate_current_info()
 
+#Use this one i think?:
 #optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest.db')
-#optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db')
+
+#Trying this one to see if used this instead:
+optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db')
 
 import json
 def hsc_high_score_users(path):
@@ -1410,7 +1486,7 @@ for i in range(0):
   path_i = path_list[i]
   N_class_func(path_i)
 
-def plot_histogram_with_text(x,y,z,shape,xlabel = '',ylabel = '',title = '',figtxt = '',min_z = np.nan,max_z = np.nan):
+def plot_histogram_with_text(x,y,z,z_stan_dev,shape,xlabel = '',ylabel = '',title = '',figtxt = '',min_z = np.nan,max_z = np.nan):
     if np.isnan(min_z):
       min_z = np.min(z)
     if np.isnan(max_z):
@@ -1420,19 +1496,20 @@ def plot_histogram_with_text(x,y,z,shape,xlabel = '',ylabel = '',title = '',figt
     x = x.reshape(shape,order = 'F')
     y = y.reshape(shape,order = 'F')
     z = z.reshape(shape,order = 'F')
-    z = np.round(z,2)
+    z_stan_dev=z_stan_dev.reshape(shape,order = 'F')
+    z = np.round(z,2);z_stan_dev=np.round(z_stan_dev,2)
     # The normal figure
     fig = pl.figure(figsize=(10, 7))
     ax = fig.add_subplot(111)
     im = ax.imshow(z, extent=[np.min(x)-dx,np.max(x)+ dx,np.min(y)-dy,np.max(y)+dy], origin='lower',aspect='auto',norm = colors.Normalize(min_z,max_z))
     # Add the text
-    jump_x = (np.max(x) - np.min(x)) / (2.0 * (len(x)-1))
-    jump_y = (np.max(y) - np.min(y)) / (2.0 * (len(y)-1))
-    x_positions = np.linspace(start=np.min(x)-dx, stop=np.max(x)+dx, num=len(x), endpoint=False)
-    y_positions = np.linspace(start=np.min(y)-dy, stop=np.max(y)+dy, num=len(y), endpoint=False)
+    jump_x = (np.max(x) - np.min(x)) / (2.0 * (shape[1]-1))
+    jump_y = (np.max(y) - np.min(y)) / (2.0 * (shape[0]-1))
+    x_positions = np.linspace(start=np.min(x)-dx, stop=np.max(x)+dx, num=shape[1], endpoint=False)
+    y_positions = np.linspace(start=np.min(y)-dy, stop=np.max(y)+dy, num=shape[0], endpoint=False)
     for y_index, y in enumerate(y_positions):
         for x_index, x in enumerate(x_positions):
-            label = z[y_index, x_index]
+            label = str(z[y_index, x_index])+'$\pm$'+str(z_stan_dev[y_index, x_index])
             text_x = x + jump_x
             text_y = y + jump_y
             if y_index<2: #y index starts counting from the bottom
@@ -1440,19 +1517,28 @@ def plot_histogram_with_text(x,y,z,shape,xlabel = '',ylabel = '',title = '',figt
             else:
                 ax.text(text_x, text_y, label, color='white', ha='center', va='center',fontsize=13)
 #    fig.colorbar(cm.ScalarMappable(norm=colors.Normalize(min_z,max_z)))
-    pl.xlabel(xlabel,fontsize=15)
-    pl.ylabel(ylabel,fontsize=15)
-    pl.title(title)
-    pl.figtext(0.5, 0.01, figtxt, wrap=True, horizontalalignment='center', fontsize=12)
-    pl.savefig('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/'+str(figtxt),transparent=True,dpi = 1000)
+    pl.xlabel(xlabel,fontsize = 18)
+    pl.ylabel(ylabel,fontsize = 18)
+    pl.title(title,fontsize = 20)
+    ax.tick_params(axis='both', which='major', labelsize=15)
+#    pl.figtext(0.5, 0.01, figtxt, wrap=True, horizontalalignment='center', fontsize=12)
+    pl.savefig('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/Break Value: '+str(figtxt),transparent=True,dpi = 1000,bbox_inches='tight')
 #    pl.show()
 
-a = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.4, 0.4, 0.4, 0.4, 0.4, 0.6000000000000001, 0.6000000000000001, 0.6000000000000001, 0.6000000000000001, 0.6000000000000001, 0.8, 0.8, 0.8, 0.8, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0])
-b = np.array([0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4, 0.0, 0.1, 0.2, 0.30000000000000004, 0.4])
-min_z,max_z,cur_z = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val.npy')
-break_vals = [5,10,15,20,40,60,80,100,120]
+a=[];b=[]
+for t in range(0,6):
+    for p in range(5):
+        a.append(0.2*t)
+        b.append(0.1*p)
+a=np.array(a);b=np.array(b)
+#THESE a AND b VALUES MIGHT NEED UPDATING AS CHANGED THE f_initial AND f_final AND break VALUES ABOVE
+min_z,max_z,cur_z,cur_z_std_dev = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/min_max_current_val.npy copy')
+break_vals = [90]#[0,5,10,15,20,40,60,80,100,200]
 for j in range(len(break_vals)):
+#for j in range(0):
   i = break_vals[j]
   c = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_'+str(i)+'.npy')
+  c_stan_dev = np.load('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/b_std_dev'+str(i)+'.npy')
   c = (c-min_z)/(max_z-min_z)
-  plot_histogram_with_text(a,b,c,(5,5),'Initial Training Proportion','Final Training Proportion', '', 'Break Value: ' + str(i),0,1)
+  c_stan_dev = (c_stan_dev-min_z)/(max_z-min_z)
+  plot_histogram_with_text(a,b,c,c_stan_dev,(5,6),'$f_{initial}$','$f_{final}$', 'N: ' + str(i),str(i),0,1)

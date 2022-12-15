@@ -7,6 +7,7 @@ import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 from config import Config
 import time
+from tqdm import tqdm
 from collections import Counter
 from datetime import datetime
 import random
@@ -22,6 +23,8 @@ import time
 import multiprocess as mp
 from multiprocessing.dummy import Pool
 import caesar_external as ce
+total_ignored = 0
+total_not_ignored = 0
 #**See note line 459**
 #Classification Class:
 #Arguments: Classification_id, User_id, Subject_id, Annotation, Label_map
@@ -211,7 +214,7 @@ class SWAP(object):
     self.last_id = 0
     self.seen = set([])
     self.db_exists = False
-    self.instance_counts=[0,0,0,0]
+    self.instance_counts=[0,0,0,0,0,0]
     self.timeout = timeout # wait x seconds to acquire db connection
     try:
       self.create_db()
@@ -378,8 +381,12 @@ class SWAP(object):
         self.users[cl.user_id].user_subject_history.append(cl.subject_id)
         self.last_id = cl.id
         self.seen.add(cl.id)
+        global total_not_ignored
+        total_not_ignored+=1
     else:
         print('User has seen subject before: Ignoring')
+        global total_ignored
+        total_ignored+=1
 
 #Takes as an input a list of subjects. If a subject is gold, it is not retired, otherwise if its score is past either threshold it is added to the to_retire list and marked as '0' or '1' depending on which threshold it passed.
   def retire(self, subject_batch):
@@ -397,7 +404,7 @@ class SWAP(object):
       subject.score=float(subject.score)
       if (subject.score < self.config.thresholds[0]) and subject.seen>=self.config.lower_retirement_limit:
         if subject.gold_label !=-1:
-          print('NOT CONTINUING!!'+str(type(subject.gold_label)))
+          print('Error: NOT CONTINUING!!'+str(type(subject.gold_label)))
         subject.retired = True
         self.subjects[subject_id].retired=True
 #        print('setting retired_as to 0')
@@ -482,17 +489,19 @@ class SWAP(object):
         try:
           assert int(row['workflow_id']) == self.config.workflow
         except AssertionError as e:
-           pass
-#          print('Assertion Error in proccess_classifications_from_csv_dump')
+           print(int(row['workflow_id']),'Assertion Error in proccess_classifications_from_csv_dump: Ignoring this classification')
+           continue
         try:
           user_id = int(row['user_id'])
-#          if row['user_name'][0:13]=='not-logged-in':
-#            continue
+#IGNORING NOT-LOGGED-ON USERS:
+          if row['user_name'][0:13]=='not-logged-in':
+            continue
         except ValueError:
           user_id = row['user_name']
         dt_row = row['created_at']
         subject_id = int(row['subject_ids'])
         annotation = json.loads(row['annotations'])
+###NOW IGNORING THESE FLAGS:
         try:
           already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
           already_seen_i_2=json.loads(row['metadata'])['seen_before']
@@ -501,14 +510,21 @@ class SWAP(object):
             print('Difference here: '+ str(already_seen_i)+" "+str(already_seen_i_2))
             already_seen_i=True
             self.instance_counts[3]+=1
+###NOW IGNORING THESE FLAGS:
         except KeyError:
           try:
             already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
             self.instance_counts[1]+=1
           except KeyError:
-            already_seen_i=False
-            self.instance_counts[2]+=1
-        if already_seen_i==False:
+            try:
+                already_seen_i=json.loads(row['metadata'])['seen_before']
+                self.instance_counts[4]+=1
+            except:
+                already_seen_i=False
+                self.instance_counts[2]+=1
+###IGNORING ANY ALREADY_SEEN FLAGS:
+#        if already_seen_i==False:
+        if True:
           try:
               cl = Classification(id,
                                   user_id,
@@ -521,10 +537,13 @@ class SWAP(object):
           self.process_classification(cl, online)
         else:
           print('duplicate classification' + str((subject_id,user_id)))
-      print("On testing, it was found a classification csv may contain both 'already_seen' and 'seen_before' flags. Out of 1873 classifications, 1286 had both flags, 585 only had 'already_seen' and 2 only had 'seen_before'. In 10 instances, the flags differed (ie one said True, the other False). For some reason, all the 'seen_before' flags were True. It seems this 'seen_before' flag is historical. In the few instances where there is no 'already_seen' flag, it is assumed that the user has *not* seen the subject before, however in cases where the flags differ, it is assumed the user *has* seen the subject before (to be on the safe side, and why else would the seen_before flag be present?). self.instance_counts gives: [0]: number of instances where both flags are present, [1]: number of instances where only 'already_seen' flag present, [2]: number of instances where 'already_seen' flag is not present (ie number of instances the already_seen flag is decided a priori to be False), [3]: number of instances where the values for 'already_seen' and 'seen_before' differ (when both present), in which case already_seen is assumed to be True.")
+          self.instance_counts[5]+=1
+#OCT 2022: IGNORING ALL OF THIS: HAVE ALREADY GOT A FUNCTION WITHIN PROCESS_CLASSIFICATIONS WHICH CHECKS THAT THE SUBJECT IS NOT ALREADY IN THE USER'S HISTORY - CAN USE THIS ON ITS OWN TO DO THE SAME THING AND THUS IGNORE THE COMPLICATIONS OF THE already_seen AND seen_before FLAGS.
+#Note, sometimes a user has already seen a subject before in their history (as it is caught by the function within process_classifications), but doesn't have either already-seen/seen-before flags. From testing, this occurs for ~5000 of 46,000 subjects which users classified more than once.
+      print("On testing, it was found a classification csv may contain both 'already_seen' and 'seen_before' flags. Out of 1873 classifications, 1286 had both flags, 585 only had 'already_seen' and 2 only had 'seen_before'. In 10 instances, the flags differed (ie one said True, the other False). For some reason, all the 'seen_before' flags were True. It seems this 'seen_before' flag is historical. In the few instances where there is no 'already_seen' flag, it is assumed that the user has *not* seen the subject before (OCT 2022: CHANGED AS ABOVE), however in cases where the flags differ, it is assumed the user *has* seen the subject before (to be on the safe side, and why else would the seen_before flag be present?). self.instance_counts gives: [0]: number of instances where both flags are present, [1]: number of instances where only 'already_seen' flag present, [2]: number of instances where neither 'already_seen' nor 'seen_before' flag is not present (ie number of instances the already_seen flag is decided a priori to be False), [3]: number of instances where the values for 'already_seen' and 'seen_before' differ (when both present), in which case already_seen is assumed to be True, [4]: number of instances where 'seen before' was present, but 'already_seen' was not,[5]: total number of times already_seen_i=True and thus the classification was ignored")
       print("To revert to Fridays graph, remove already_seen_i=True from case where two flags differ")
       print("For plotting Dec graph, have changed 1) config file db name, 2) config file gold file paths 3) run.py gold file paths 4) run.py test_caesar/online call function 5) kswap_plots database path")
-      print('Instance Counts: [Both, AS only, !AS, Dif]' + str(self.instance_counts))
+      print('Instance Counts: [Both, AS only, !AS and !SB, Dif,SB only,Tot ign]' + str(self.instance_counts))
 #***Why is there an try/except function here? Surely need to do both simultaneously?***
 #Original:
 #    try:
@@ -580,26 +599,26 @@ class SWAP(object):
       q='initialise'
       row_list=[]
       i=0;f = 0
-      for row in reader:
-        if f<shuffle_time:
-            row_list.append(row)
-            f+=1
-        else:
-            self.classify_rows(row_list,online)
-            f=0
-            row_list=[row]
-#          if i==0:
-#            dt_0 = self.date_time_convert(row['created_at'])
+      for row in tqdm(reader):
+#        if f<shuffle_time:
 #            row_list.append(row)
-#            i+=1
-#          else:
-#            dt_i = self.date_time_convert(row['created_at'])
-#            if dt_i<dt_0+shuffle_time:
-#              row_list.append(row)
-#            else:
-#              self.classify_rows(row_list,online)
-#              row_list=[row]
-#              dt_0 = self.date_time_convert(row['created_at'])
+#            f+=1
+#        else:
+#            self.classify_rows(row_list,online)
+#            f=0
+#            row_list=[row]
+          if i==0:
+            dt_0 = self.date_time_convert(row['created_at'])
+            row_list.append(row)
+            i+=1
+          else:
+            dt_i = self.date_time_convert(row['created_at'])
+            if dt_i<dt_0+shuffle_time:
+              row_list.append(row)
+            else:
+              self.classify_rows(row_list,online)
+              row_list=[row]
+              dt_0 = self.date_time_convert(row['created_at'])
       self.classify_rows(row_list,online)
 #Recieves data from caesar, adds classification events/updating scores (as per process_classification), but doesnt set any to be retired.
   def caesar_recieve(self, ce):
@@ -867,7 +886,8 @@ class SWAP(object):
                               annotation,
                               label_map=self.config.label_map,
                               classification_time=classification_time)
-        except ValueError:
+        except ValueError as e2:
+          print(e2)
           continue
         try:
           self.users[cl.user_id]
@@ -899,10 +919,16 @@ class SWAP(object):
   def run_online(self, gold_csv, classification_csv,hard_sims_csv=None):
     self.get_golds(gold_csv,hard_sims_csv)
     self.process_classifications_from_csv_dump(classification_csv, online=True)
-    
+    print('Total ignored:     ',total_ignored)
+    print('Total not ignored: ',total_not_ignored)
+
   def run_shuffled_online(self, gold_csv, classification_csv,shuffle_time,hard_sims_csv=None):
+    st_shuffle = time.time()
     self.get_golds(gold_csv,hard_sims_csv)
     self.process_classifications_from_shuffled_csv(classification_csv,shuffle_time, online=True)
+    print('Time Taken: ',time.time()-st_shuffle)
+    print('Total ignored:     ',total_ignored)
+    print('Total not ignored: ',total_not_ignored)
 
   def run_caesar(self,gold_csv,hard_sims_csv=None):
     self.load()
