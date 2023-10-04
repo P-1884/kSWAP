@@ -3,36 +3,52 @@ A basic script to create a golds csv from a set of classifications
 """
 import argparse
 import pandas as pd
-
-subjects_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/beta_test_25jan_subjects.csv'
-out_path = '/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/des_golds_beta_test_25jan.csv'
-
+import numpy as np
+from collections import Counter
+from config import Config
+subjects_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/space-warps-des-vision-transformer-subjects.csv'
+out_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/des_beta_test_golds.csv'
 df = pd.read_csv(subjects_path)
-
+print('ONLY PARSING GOLDS WHICH BELONG TO THE WORKFLOW: ',Config().workflow)
+df = df[df['workflow_id']==Config().workflow]
 # extract subject_id and gold status. Purge if not clear
 subjects = []
 skip_subjects = []
 golds = []
 unique_ids = set(df['subject_id'])
-
+counter_dict = Counter(df['subject_id'])
+duplication_list = [subj_repeat for subj_repeat in counter_dict if counter_dict[subj_repeat]>1]
+if len(duplication_list)>0:
+    print("WARNING: Duplicated subject id's are present in the subject database. Fix the duplication before continuing:", duplication_list)
 types = ['SUB', 'DUD', 'LENS']
 for row in df.iterrows():
     subject = row[1]['subject_id']
 #NOTE IN SOME CLASSIFICATION FILES (NOT THIS ONE), WHETHER THE IMAGE IS A LENS/NOT_LENS ETC IS NOT IN THE METADATA COLUMN BUT ELSEWHERE.
-    data = row[1]['metadata']
+    data = eval(row[1]['metadata'])
     if subject in subjects:
         continue
     elif subject in skip_subjects:
         continue
     else:
-        if 'SUB' in data:
+        try: obj_type = data['#feedback_1_type']
+        except Exception as ex:
             skip_subjects.append(subject)
-        elif 'DUD' in data:
+            continue
+        if 'SUB' in obj_type:
+            skip_subjects.append(subject)
+        elif 'DUD' in obj_type:
             subjects.append(subject)
             golds.append(0)
-        elif 'LENS' in data:
+        elif 'LENS' in obj_type:
             subjects.append(subject)
             golds.append(1)
 
+golds=np.array(golds)
+print(golds,np.sum(golds==0))
+print(f'In total, have {np.sum(golds)} sims and {np.sum(golds==0)} duds, along with {len(skip_subjects)} test subjects')
+for gold_subj in subjects:
+    assert gold_subj not in skip_subjects
+for test_subj in skip_subjects:
+    assert test_subj not in subjects
 golds = pd.DataFrame({'subject_id': subjects, 'gold': golds})
 golds.to_csv(out_path, index=False)
