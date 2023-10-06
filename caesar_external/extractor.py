@@ -82,6 +82,7 @@ def delete_from_sqs(message):
   messageBody = message['Body']
   messageBodyMd5 = hashlib.md5(messageBody.encode()).hexdigest()
   if messageBodyMd5 == message['MD5OfBody']:
+    sqs.delete_message(QueueUrl=INSERT_QUEUE_URL_HERE,ReceiptHandle=message['ReceiptHandle'])
   c = (json.loads(messageBody))
   try:
     already_seen_flag = c['data']['classification']['metadata']['subject_selection_state']['already_seen']
