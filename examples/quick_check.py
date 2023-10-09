@@ -15,7 +15,7 @@ pd.set_option('display.width', 1500)
 #file_path = './data/'+sys.argv[1]+'.db'
 from config import Config
 file_path = Config().examples_path+'/data/'+Config().db_name
-file_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data//swap_beta_test_db_Sept2023_beta_FINAL_from_csv.db'
+#file_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/swap_beta_test_db_Sept2023_caesar_testing-Copy1.db'
 print('filepath',file_path)
 print(sys.argv)
 def thresholds_setting():
@@ -39,16 +39,17 @@ print('USERS')
 print('User db')
 user_db =pd.DataFrame.from_dict(read_sqlite(file_path)['users']) 
 user_db.to_csv(Config().examples_path+'/data/DES_Beta_Sept_2023_users.csv')
-
-print(user_db[['user_id', 'user_score', 'confusion_matrix']])
+N_subj_seen_by_user = [len(eval(user_db['user_subject_history'][i])) for i in range(len(user_db))]
+user_db['N_subj_seen'] = N_subj_seen_by_user
+print(user_db[['user_id', 'user_score', 'confusion_matrix','N_subj_seen']])
 
 print('User history')
 #print(pd.DataFrame.from_dict(read_sqlite(file_path)['users'])['history'][0])
 print('SUBJECTS')
 subj_db = pd.DataFrame.from_dict(read_sqlite(file_path)['subjects'])
 subj_db['score']= subj_db['score'].astype('float64')
-print('Sum not retired:',len(subj_db[(subj_db['score']>=1e-5)&(subj_db['gold_label']==-1)]))
-print('Sum test',len(set(subj_db['subject_id'])))
+print('Sum test not retired:',len(subj_db[(subj_db['retired']==0)&(subj_db['gold_label']==-1)]))
+print('Sum test so far',len(set(subj_db[subj_db['gold_label']==-1]['subject_id'])))
 subj_db.to_csv(Config().examples_path+'/data/DES_Beta_Sept_2023_subjects.csv')
 
 print('Test subjects')
@@ -72,13 +73,15 @@ key_error_summary_dict = {'0':'Error in caesar_receive',\
                           '3':'Error when looking for user-id in Caesar Extractor',
                           '4':'Error in sending subjects to panoptes for retirement',\
                           '5':'Error when trying to delete messages from SQS queue in Caesar Extractor',\
-                          '6':'No error set for this index',\
+                          '6':'Error when saving retired list - retired_list path name may not be set?',\
                           '7':'Catch-all exception - could be anywhere!',\
-                          '8':'User sees the same test subject again'}
+                          '8':'User sees the same test subject again',\
+                          '9':'Error when trying to remove duplicate classifications in caesar_extractor'}
 for k_i in key_error_summary_dict.keys():
     print(k_i,key_error_summary_dict[k_i])
 for line in open(Config().keyerror_list_path,'r'):
-    print(line)
+    key_error_list = eval(line)
+    print({elem:key_error_list[elem] for elem in range(len(key_error_list))})
 print(f'Total number of test-subject classifications: {np.sum(subj_db[subj_db["gold_label"]==-1]["seen"])}')
 print(f'Total number of unique test-subjects classified: {len(set((subj_db[subj_db["gold_label"]==-1]["subject_id"])))}')
 print(f'Total number of training-subject classifications: {np.sum(subj_db[subj_db["gold_label"]!=-1]["seen"])}')

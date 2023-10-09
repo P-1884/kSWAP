@@ -95,7 +95,6 @@ class UniqueMessage(object):
         logger.debug(message)
         self.classification_id = int(message['classification_id'])
         self.message = message
-        print(int(message['classification_id']))
 
     def __eq__(self, other):
         return self.classification_id == other(self.classification_id)

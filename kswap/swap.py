@@ -786,9 +786,18 @@ class SWAP(object):
         retire_batch = list(set(np.array(retire_list_thres+retire_list_Nclass)))
         logging.info('Retiring ' + str(len(retire_batch))+' subjects: ' +\
                                    str(retire_batch))
-        retired_list = self.retrieve_list(self.config.retired_items_path)
-        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
-        self.save_list(retired_list,self.config.retired_items_path)
+        try:
+            retired_list = self.retrieve_list(self.config.retired_items_path)
+            retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+            self.save_list(retired_list,self.config.retired_items_path)
+        except Exception as ex:
+            print(ex)
+            with open(self.config.keyerror_list_path, 'r') as g:
+                keyerror_list=eval(g.read())
+            print('KEY_ERROR_6 HERE')
+            keyerror_list[6]+=1
+            with open(self.config.keyerror_list_path, 'w') as h:
+                h.write(str(keyerror_list))
         if len(retire_batch)>0:
             try:
                 if len(retire_list_Nclass)>0:
