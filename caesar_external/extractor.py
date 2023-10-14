@@ -101,10 +101,10 @@ class StandardExtractor(Extractor):
 sqs = boto3.client('sqs',region_name='us-east-1', aws_access_key_id=os.environ["AMAZON_ACCESS_KEY_ID"],aws_secret_access_key=os.environ['AMAZON_SECRET_ACCESS_KEY'])
 
 def delete_from_sqs(message):
-    sqs.delete_message(QueueUrl=INSERT_QUEUE_URL_HERE,ReceiptHandle=message['ReceiptHandle'])
       messageBody = message['Body']
       messageBodyMd5 = hashlib.md5(messageBody.encode()).hexdigest()
       if messageBodyMd5 == message['MD5OfBody']:
+        sqs.delete_message(QueueUrl=INSERT_QUEUE_URL_HERE,ReceiptHandle=message['ReceiptHandle'])
       c = (json.loads(messageBody))
       try:
         already_seen_flag = c['data']['classification']['metadata']['subject_selection_state']['already_seen']
