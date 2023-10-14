@@ -6,10 +6,12 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 from config import Config
-subjects_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/space-warps-des-vision-transformer-subjects.csv'
-out_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/des_beta_test_golds.csv'
+subjects_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/space-warps-des-vision-transformer-subjects_Oct_2023.csv'
+out_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/DES_VT_Oct_2023.csv'
 df = pd.read_csv(subjects_path)
 print('ONLY PARSING GOLDS WHICH BELONG TO THE WORKFLOW: ',Config().workflow)
+subject_sets = [116378,116379,116447,116380]
+print(f'ONLY PARSING GOLDS WHICH BELONG TO THE SUBJECT SETS: {subject_sets}')
 df = df[df['workflow_id']==Config().workflow]
 # extract subject_id and gold status. Purge if not clear
 subjects = []
@@ -25,6 +27,7 @@ for row in df.iterrows():
     subject = row[1]['subject_id']
 #NOTE IN SOME CLASSIFICATION FILES (NOT THIS ONE), WHETHER THE IMAGE IS A LENS/NOT_LENS ETC IS NOT IN THE METADATA COLUMN BUT ELSEWHERE.
     data = eval(row[1]['metadata'])
+    if row[1]['subject_set_id'] not in subject_sets: continue
     if subject in subjects:
         continue
     elif subject in skip_subjects:

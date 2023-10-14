@@ -18,7 +18,7 @@ class Config(object):
     self.p0 = 5e-4
     self.gamma = 1
     self.thresholds = (1.e-5, 1)
-#SHOULD BE 4:
+#SHOULD BE 5:
     self.lower_retirement_limit=5000#5
 #SHOULD BE 30:
     self.retirement_limit = 50000
