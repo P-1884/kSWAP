@@ -545,13 +545,14 @@ def scatter_hist(x, y, s, ax, ax_histx, ax_histy,not_logged_on=False):
 hard_sims_ids=[72109491, 72109492, 72109493, 72109494, 72109495, 72109496, 72109497, 72109498, 72109499, 72109500, 72109501, 72109502, 72109503, 72109504, 72109505, 72109506, 72109507, 72109508, 72109509, 72109510]
 #FILE PATH HERE
 def trajectory_plot(path='./data/swap.db', subjects=[]):
+    print(f'PLOTTING FROM: {path}')
 #    print(pd.DataFrame.from_dict(read_sqlite(path)['subjects']))
     subject_id=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['subject_id']
     subject_histories = pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['history']
     histories_df = pd.DataFrame(subject_histories)
     subject_golds=list(pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['gold_label'])
     N_class = 0; N_class_hist = [];N_subj = 0
-    for i in tqdm(range(len(subject_id))):
+    for i in []:#tqdm(range(len(subject_id))):
       subj_i = eval(subject_histories[i])
       if subject_golds[i]==-1 and subj_i[len(subj_i)-1][3]<10**-5:
         N_subj+=1
@@ -563,7 +564,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
 #    pl.show()
     retired=pd.DataFrame.from_dict(read_sqlite(path)['subjects'])['retired']
     retired = sum(1 for x in retired if x!=0)
-    users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
+    users = pd.DataFrame.from_dict(read_sqlite(path)['users'])
     user_score_matrices=users['user_score']
     user_confusion_matrices=users['confusion_matrix']
     hard_sims_ids_indx=[]
@@ -599,7 +600,9 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
           if i==0:
             classification_time_i.append(-100)
           else:
-            classification_time_i.append(datetime.datetime(int(date_i[0:4]),int(date_i[5:7]),int(date_i[8:10]),int(date_i[11:13]),int(date_i[14:16]),int(date_i[17:19])).timestamp())
+            classification_time_i.append(datetime.datetime(int(date_i[0:4]),int(date_i[5:7]),int(date_i[8:10]),\
+                                                           int(date_i[11:13]),int(date_i[14:16]),int(date_i[17:19]))\
+                                                          .timestamp())
           history_all_i.append(history_list_i[i])
         subjects_history_final.append(history_i)
         history_all_final.append(history_all_i)
@@ -612,7 +615,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
             max_seen = len(history_i)-1
 
     subjects = subjects_final
-    p_real , p_bogus= thresholds_setting()
+    p_real , p_bogus = thresholds_setting()
 
     def plotting_traj(subjects, subjects_history_final,timer=False):
         #Calculating the number of false/true positives/negatives from the training sets: Not accounting for majority voting or anything here as the training subjects are not retired so majority-voting won't apply to them. Count a 'positive' as a score above the prior, and a 'negative' as a score below the prior.
@@ -638,20 +641,21 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
             ax.set_xlim(p_min, p_max)
             ax.set_xscale('log')
             ax.set_ylim(max_seen+1,0)
-#            ax.set_ylim(31,0)
+#            ax.set_ylim(10,0)
             ax.set_xlim(10**-10,1)
             ax.axvline(x=prior_setting(), color=color_test, linestyle='dotted')
             ax.axvline(x=p_bogus, color=color_bogus, linestyle='dotted')
             ax.axvline(x=p_real, color=color_real, linestyle='dotted')
+            print(p_min,p_bogus,[max_seen+1,config_0().lower_retirement_limit])
+            print(p_bogus,p_max,[max_seen+1,config_0().retirement_limit])
             ax.fill_betweenx(x1=p_min,x2=p_bogus,y=[max_seen+1,config_0().lower_retirement_limit],alpha=0.2,color='darkviolet')
             ax.fill_betweenx(x1=p_bogus,x2=p_max,y=[max_seen+1,config_0().retirement_limit],alpha=0.2,color='darkviolet')
             ax.set_xlabel('Posterior Probability Pr(LENS|d)',fontsize=5)
             ax.set_ylabel('Number of Classifications',fontsize=5)
             sub_list=[]
             print(str(len(should_be_retired_list)) + ' subjects should have been retired but were subsequently classified')
+            print(len(subjects))
             for j in range(0,len(subjects)):
-                if j in np.linspace(0,len(subjects)):
-                  print(j)
                 history = np.array(subjects_history_final[j])
                 y = np.arange(len(history) + 1)-1
                 history = np.append(prior_setting(), history)
@@ -665,11 +669,15 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
                         TN_number+=1
                     if history[len(history)-1]>=prior_value: #putting an equality here as would be manually checking these ones anyway, so seems reasonable
                         FP_number+=1
-                if j not in should_be_retired_list:
+                if subjects[j] not in should_be_retired_list: #j not in should_be_retired_list:
+                    #continue
                     ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
                     ax.scatter(history, y,marker='+',linewidth=1,color=colors[golds_final[j]],alpha=0.6,s=0.5)
-                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
-                if j in should_be_retired_list:
+                    ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,\
+                               edgecolors=colors[golds_final[j]],facecolors=colors[golds_final[j]])
+                if subjects[j] in should_be_retired_list:#j in should_be_retired_list:
+                  ax.annotate(str(subjects[j]),(history[-1:],y[-1:]),size=4)
+                  print('plotting should-be-retired-subjects')
                   ax.plot(history, y, linestyle='-',color=colors[golds_final[j]],alpha=alphas[golds_final[j]],linewidth=0.5)
                   ax.scatter(history[-1:], y[-1:], alpha=1.0,s=1,c='k')
                   abc=[]
@@ -728,6 +736,7 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
                 ax.axhline(y=24*60*60*t, color='k',linewidth=0.05)
             ax.legend(handles=patches, loc='lower right', framealpha=1.0,prop={'size':5})
             pl.show()
+            print('Not plotting? Is X11 forwarding on?')
 
     plotting_traj(subjects, subjects_history_final,timer=False)
     
@@ -844,6 +853,8 @@ def trajectory_plot(path='./data/swap.db', subjects=[]):
 #trajectory_plot('/Users/hollowayp/Documents/swap beta25 backup4.db')
 #trajectory_plot('./data/swap_hsc_online_includeloggedon.db')
 #trajectory_plot('./data/swap_hsc_online_excludeloggedon.db')
+
+trajectory_plot('./data/swap_beta_test_db_Sept2023_beta_FINAL_LIVE_SWAP.db')
 
 def plotting_user_score(path):
   users =pd.DataFrame.from_dict(read_sqlite(path)['users'])
@@ -1421,7 +1432,7 @@ def optimising_training_frequency(path):
 #optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest.db')
 
 #Trying this one to see if used this instead:
-optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db')
+#optimising_training_frequency('/Users/hollowayp/Documents/GitHub/kSWAP/examples/data/swap_bFINAL_hardsimsaretest_excludenotloggedon_changingalreadyseen3tofalse.db')
 
 import json
 def hsc_high_score_users(path):
@@ -1524,7 +1535,7 @@ def plot_histogram_with_text(x,y,z,z_stan_dev,shape,xlabel = '',ylabel = '',titl
 #    pl.figtext(0.5, 0.01, figtxt, wrap=True, horizontalalignment='center', fontsize=12)
     pl.savefig('/Users/hollowayp/Documents/Coding_Files/Files for 1st Year Presentation/Break Value: '+str(figtxt),transparent=True,dpi = 1000,bbox_inches='tight')
 #    pl.show()
-
+'''
 a=[];b=[]
 for t in range(0,6):
     for p in range(5):
@@ -1542,3 +1553,4 @@ for j in range(len(break_vals)):
   c = (c-min_z)/(max_z-min_z)
   c_stan_dev = (c_stan_dev-min_z)/(max_z-min_z)
   plot_histogram_with_text(a,b,c,c_stan_dev,(5,6),'$f_{initial}$','$f_{final}$', 'N: ' + str(i),str(i),0,1)
+'''

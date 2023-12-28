@@ -21,7 +21,7 @@ class Config(object):
 #SHOULD BE 5:
     self.lower_retirement_limit=5#5
 #SHOULD BE 30:
-    self.retirement_limit = 30
+    self.retirement_limit = 50000
 
 #File Paths: 
     self.retired_items_path='./data/retired_list_DES_VT_Oct_2023.txt' #This should start with 'Column 1' as its first line.

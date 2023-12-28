@@ -131,3 +131,10 @@ dmypy.json
 #sqlite3 databases
 *.db
 examples/data/tuples_data
+
+*.txt
+*.csv
+*.db
+examples/swap_beta_test_db_Sept2023_beta_FINAL_from_csv
+examples/data/*
+*.out
