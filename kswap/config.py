@@ -19,7 +19,7 @@ class Config(object):
     self.gamma = 1
     self.thresholds = (1.e-5, 1)
 #SHOULD BE 5:
-    self.lower_retirement_limit=5000#5
+    self.lower_retirement_limit=5#5
 #SHOULD BE 30:
     self.retirement_limit = 50000
 
@@ -28,7 +28,7 @@ class Config(object):
     self.Nclass_retirement_path ='./data/retired_list_DES_VT_Oct_2023_Nclass.txt' #This should start with 'Column 1' as its first line.
     self.Nthres_retirement_path = './data/retired_list_DES_VT_Oct_2023_Nthres.txt'#This should start with 'Column 1' as its first line.
     self.classification_id_path = '/mnt/zfsusers/hollowayp/kSWAP/kswap/Classification_id_DES_VT_Oct_2023.txt'#This should start with 'Column 1' as its first line.
-    self.golds_path = './data/DES_VT_Oct_2023.csv'
+    self.golds_path = './data/DES_VT_Oct_2023_golds.csv'
     self.classification_path = None #'./data/space-warps-des-vision-transformer-classifications_beta_FINAL.csv'
     self.hard_sims_path = None
     self.kswap_path = '/mnt/zfsusers/hollowayp/kSWAP/kswap/'
