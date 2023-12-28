@@ -4,6 +4,7 @@ from swap import SWAP
 from kswap import kSWAP
 
 #Loads data from databases, get/apply golds then processes classification from csv then updates the databases.
+#NOTE: See April 2023 comment above apply_golds within swap.py.
 def test_offline():
   from config import Config
   swap = SWAP(config=Config())
@@ -97,11 +98,11 @@ def main():
   ### SWAP tests
 #  print('2: Offline')
 #  test_offline()
-  print('Starting Iteration')
+#  print('Starting Iteration')
 #  test_online()
-  test_online()
+#  test_online()
 #  test_shuffled_online()
-#  test_caesar()
+  test_caesar()
   print('Finished Iteration')
 #  test_online()
 #  print('4: Compare')

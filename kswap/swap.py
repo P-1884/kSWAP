@@ -15,8 +15,11 @@ from panoptes_client import Panoptes, Workflow
 from panoptes_client import Subject as PanoptesSubject
 from panoptes_client.panoptes import PanoptesAPIException
 from panoptes_client import subject_set
+import sys
+sys.path.append('/mnt/zfsusers/hollowayp/')
 try:
     import caesar_external as ce
+    print(print(ce.__file__))
 except ModuleNotFoundError:
     pass
 import time
@@ -194,9 +197,9 @@ class Subject(object):
             json.dumps(self.history),\
             self.hard_sim_label)
 
-
 def find_subjects(subject_id):
-  return PanoptesSubject().find(subject_id)
+    return PanoptesSubject().find(subject_id)
+
 #Initialises dictionaries for users, subjects, objects (?), config etc. Creates database:
 #users (feat: user_id, user_score, confusion_matrix and history),
 #subjects(feat: subject_id, gold_label, score, retired status/classification, seen and history)
@@ -344,7 +347,7 @@ class SWAP(object):
 
 #Checks if classification is new (if not, function does nothing), if the user is new (if so, makes them a member of User class), if subject is new (if so, makes them a member of Subject class).
 #Then: Updates subject score due to this classification. If subject is a gold and swap being run in online mode, it also updates user score and adds it to user history.
-  def process_classification(self, cl, online=False):
+  def process_classification(self, cl, online=False, from_csv = False):
     # check user is known
     time_stamp = time.time()
     classification_time=cl.classification_time
@@ -365,6 +368,17 @@ class SWAP(object):
 #REMOVE RANDINT SECTION OF THE NEXT LINE - JUST INCLUDED FOR TESTING PURPOSES np.random.randint(0,10)!=0.
 #'time_stamp' is the time at which the classification was processed by swap. 'classification_time' is the time recorded by Zooniverse as the time the classification was made.
     if cl.subject_id not in self.users[cl.user_id].user_subject_history:
+        '''
+        if from_csv:
+            if (self.subjects[cl.subject_id].gold_label==-1) and \
+               (self.subjects[cl.subject_id].score < self.config.thresholds[0]) and \
+               (self.subjects[cl.subject_id].seen>=self.config.lower_retirement_limit):
+                print('Beyond lower p threshold. Ignoring classification')
+                return
+            if (self.subjects[cl.subject_id].gold_label==-1) and \
+               (self.subjects[cl.subject_id].seen >= self.config.retirement_limit):
+                print('Beyond upper N_class threshold. Ignoring classification')
+                return'''
         self.subjects[cl.subject_id].update_score(cl.label, self.users[cl.user_id],time_stamp,classification_time)
         if online:
           if self.subjects[cl.subject_id].gold_label==0:
@@ -377,7 +391,9 @@ class SWAP(object):
               self.users[cl.user_id].update_user_score(1, cl.label)
             else:
               print('hard sim, not updating user score')
-        self.users[cl.user_id].history.append((cl.subject_id, self.users[cl.user_id].user_score,time_stamp,classification_time))
+        self.users[cl.user_id].history.append((cl.subject_id, \
+                                               self.users[cl.user_id].user_score,\
+                                               time_stamp,classification_time))
         self.users[cl.user_id].user_subject_history.append(cl.subject_id)
         self.last_id = cl.id
         self.seen.add(cl.id)
@@ -387,6 +403,14 @@ class SWAP(object):
         print('User has seen subject before: Ignoring')
         global total_ignored
         total_ignored+=1
+        print('Total ignored so far: ',total_ignored)
+        if self.subjects[cl.subject_id].gold_label==-1:
+            print("KEY_ERROR_8 HERE")
+            with open(self.config.keyerror_list_path,'r') as g:
+                keyerror_list=eval(g.read())
+                keyerror_list[8]+=1
+            with open(self.config.keyerror_list_path,'w') as q:
+                q.write(str(keyerror_list))
 
 #Takes as an input a list of subjects. If a subject is gold, it is not retired, otherwise if its score is past either threshold it is added to the to_retire list and marked as '0' or '1' depending on which threshold it passed.
   def retire(self, subject_batch):
@@ -446,18 +470,24 @@ class SWAP(object):
   def send_panoptes(self, subject_batch,reason):
     subjects = []
     try:
-        with Pool(4) as pool:
-          subjects = pool.map(find_subjects, subject_batch)
+        #with Pool(4) as pool:
+        #    subjects = pool.map(find_subjects, subject_batch)
     #    for subject_id in subject_batch:
     #      subjects.append(PanoptesSubject().find(subject_id))
-        self.workflow.retire_subjects(subjects,reason=reason)
+        #print('SUBJ',subjects)
+        print('SUBJ BATCH',subject_batch)
+        self.workflow.retire_subjects([str(s_i) for s_i in subject_batch],\
+                                      reason=reason)#self.workflow.retire_subjects(subjects,reason=reason)
+        for subject_i in subject_batch:
+            print(subject_i,self.workflow.subject_workflow_status([subject_i]).retirement_reason)
     except Exception as excep:
-      print(excep)
-      with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'r') as g:
-        keyerror_list=eval(g.read())
-        keyerror_list[4]+=1
-      with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'w') as q:
-        q.write(str(keyerror_list))
+        print(excep)
+        print('KEY_ERROR_4 HERE')
+        with open(self.config.keyerror_list_path,'r') as g:
+            keyerror_list=eval(g.read())
+            keyerror_list[4]+=1
+        with open(self.config.keyerror_list_path,'w') as q:
+            q.write(str(keyerror_list))
 
   def retrieve_list(self,list_path):
     import pandas as pd
@@ -466,20 +496,21 @@ class SWAP(object):
         list_total = []
         for row in df.iterrows():
             try:
-              list_i = eval(row[1]['list items'])
+              list_i = eval(row[1]['Column 1'])
             except:
-              list_i=row[1]['list items']
+              list_i=row[1]['Column 1']
             list_total.append(list_i)
         return list_total
     except FileNotFoundError:
+        print('Error with file retrieval')
         return []
 
   def save_list(self,list_total,list_path):
     import pandas as pd
-    list_db = pd.DataFrame({'list items': list_total})
+    list_db = pd.DataFrame({'Column 1': list_total}) #Dont change this column title unless change those in def retrieve_list() too.
     list_db.to_csv(list_path, index=False)
 
-#Goes through each row in the csv, defining classification events, updating scores (as per process_classification) and labelling subjects to be retired if required.
+  #Goes through each row in the csv, defining classification events, updating scores (as per process_classification) and labelling subjects to be retired if required.
   def process_classifications_from_csv_dump(self, path, online=False):
     with open(path, 'r',encoding='utf-8-sig') as csvdump:
       reader = csv.DictReader(csvdump)
@@ -493,15 +524,18 @@ class SWAP(object):
            continue
         try:
           user_id = int(row['user_id'])
-#IGNORING NOT-LOGGED-ON USERS:
-          if row['user_name'][0:13]=='not-logged-in':
-            continue
+        #IGNORING NOT-LOGGED-ON USERS (and 5 lines below too):
+          #if str(row['user_id'][0:13])=='not-logged-in':
+          #  continue
         except ValueError:
           user_id = row['user_name']
+        #IGNORING NOT-LOGGED-ON USERS (and 5 lines above too):
+          #if str(row['user_name'][0:13])=='not-logged-in':
+          #  continue
         dt_row = row['created_at']
         subject_id = int(row['subject_ids'])
         annotation = json.loads(row['annotations'])
-###NOW IGNORING THESE FLAGS:
+        ###NOW IGNORING THESE FLAGS:
         try:
           already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
           already_seen_i_2=json.loads(row['metadata'])['seen_before']
@@ -510,7 +544,7 @@ class SWAP(object):
             print('Difference here: '+ str(already_seen_i)+" "+str(already_seen_i_2))
             already_seen_i=True
             self.instance_counts[3]+=1
-###NOW IGNORING THESE FLAGS:
+        ###NOW IGNORING THESE FLAGS:
         except KeyError:
           try:
             already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
@@ -522,8 +556,8 @@ class SWAP(object):
             except:
                 already_seen_i=False
                 self.instance_counts[2]+=1
-###IGNORING ANY ALREADY_SEEN FLAGS:
-#        if already_seen_i==False:
+        ###IGNORING ANY ALREADY_SEEN FLAGS:
+        #if already_seen_i==False:
         if True:
           try:
               cl = Classification(id,
@@ -534,7 +568,7 @@ class SWAP(object):
                                   classification_time=classification_time)
           except ValueError:
             continue
-          self.process_classification(cl, online)
+          self.process_classification(cl, online,from_csv=True)
         else:
           print('duplicate classification' + str((subject_id,user_id)))
           self.instance_counts[5]+=1
@@ -564,16 +598,16 @@ class SWAP(object):
           for r in range(len(row_list)):
             row_i = row_list[r]
             id = int(row_i['classification_id'])
-#            assert int(row_i['workflow_id']) == self.config.workflow
+            #assert int(row_i['workflow_id']) == self.config.workflow
             try:
               user_id = int(row_i['user_id'])
             except ValueError:
               user_id = row_i['user_name']
             subject_id = int(row_i['subject_ids'])
             annotation = json.loads(row_i['annotations'])
-#            already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
+            #already_seen_i=json.loads(row['metadata'])['subject_selection_state']['already_seen']
             classification_time=row_i['created_at']
- #           if already_seen_i==False:
+            #if already_seen_i==False:
             cl = Classification(id,
                   user_id,
                   subject_id,
@@ -581,8 +615,8 @@ class SWAP(object):
                   label_map=self.config.label_map,
                   classification_time=classification_time)
             self.process_classification(cl, online)
-#            else:
-#              print('duplicate classification' + str((subject_id,user_id)))
+            #else:
+            #  print('duplicate classification' + str((subject_id,user_id)))
 
 #Returns a timestamp for the time the classification was made
   def date_time_convert(self, row_created_at):
@@ -600,13 +634,13 @@ class SWAP(object):
       row_list=[]
       i=0;f = 0
       for row in tqdm(reader):
-#        if f<shuffle_time:
-#            row_list.append(row)
-#            f+=1
-#        else:
-#            self.classify_rows(row_list,online)
-#            f=0
-#            row_list=[row]
+        #if f<shuffle_time:
+        #    row_list.append(row)
+        #    f+=1
+        #else:
+        #    self.classify_rows(row_list,online)
+        #    f=0
+        #    row_list=[row]
           if i==0:
             dt_0 = self.date_time_convert(row['created_at'])
             row_list.append(row)
@@ -629,12 +663,15 @@ class SWAP(object):
     try:
 #        data = ce.Extractor.next()
         st = time.time()
+#Located here:
+#./opt/anaconda3/lib/python3.8/site-packages/caesar_external/utils/caesar_utils.py:        return cls.instance().sqs_retrieve_fast(queue_url)
+#./opt/anaconda3/lib/python3.8/site-packages/caesar_external/extractor.py:    def sqs_retrieve_fast(self):
         data = ce.SQSExtractor.sqs_retrieve_fast()
         haveItems = False
         subject_batch = []
         q=0;q_all=0
 #        for i, item in enumerate(data):
-        print('Beginning processing')
+        print(f'Beginning processing of {len(data)} subjects')
         for i in range(len(data)):
           item = data[i]
           try:
@@ -649,12 +686,12 @@ class SWAP(object):
               except TypeError as e:
                 print(e)
                 print(item)
-                print('User not logged on')
+                print('No user identification')
                 continue
 #              print('')
 #              print('User id: ' + str(user_id))
               subject_id = int(item['subject'])
-              subject_i = self.subjects[subject_id]
+              #subject_i = self.subjects[subject_id]
               classification_time=item['classification_time']
 #              print('Gold status: ' + str(subject_i.gold_label))
 #              print('Previous Panoptes Retirement Reason: '+ str(self.workflow.subject_workflow_status(subject_id).retirement_reason))
@@ -678,7 +715,9 @@ class SWAP(object):
 #              if already_seen_i==False:
               if True:
                   q+=1
+                  print('Making classification')
                   cl = Classification(id, user_id, subject_id, annotation,label_map=self.config.label_map,classification_time=classification_time)
+                  print('Processing classification')
                   self.process_classification(cl,online=True)
                   #^Adds users to User, subjects to Subjects and updates scores/history's accordingly.
                   self.last_id = id
@@ -705,10 +744,9 @@ class SWAP(object):
         keyerror_2_i+=1
         return False, [], 0,0,keyerror_1_i,keyerror_2_i,0
     
-
   def process_classifications_from_caesar(self, caesar_config_name):
     ce.Config.load(caesar_config_name)
-    with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'r') as f:
+    with open(self.config.aws_list_path,'r') as f: #('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'r') as f:
         aws_list=eval(f.read())
     q=0
     k=0
@@ -748,9 +786,35 @@ class SWAP(object):
         retire_batch = list(set(np.array(retire_list_thres+retire_list_Nclass)))
         logging.info('Retiring ' + str(len(retire_batch))+' subjects: ' +\
                                    str(retire_batch))
-#        retired_list = self.retrieve_list(self.config.retired_items_path)
-#        retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
-#        self.save_list(retired_list,self.config.retired_items_path)
+        try:
+            retired_list = self.retrieve_list(self.config.retired_items_path)
+            retired_list.extend(list(set(np.array(retire_list_thres+retire_list_Nclass))))
+            self.save_list(retired_list,self.config.retired_items_path)
+        except Exception as ex:
+            print(ex)
+            with open(self.config.keyerror_list_path, 'r') as g:
+                keyerror_list=eval(g.read())
+            print('KEY_ERROR_6 HERE')
+            keyerror_list[6]+=1
+            with open(self.config.keyerror_list_path, 'w') as h:
+                h.write(str(keyerror_list))
+        if len(retire_batch)>0:
+            try:
+                if len(retire_list_Nclass)>0:
+                    retired_list = self.retrieve_list(self.config.Nclass_retirement_path)
+                    retired_list.append([time.time(),retire_list_Nclass])
+                    self.save_list(retired_list,self.config.Nclass_retirement_path)
+            except:
+                print("Couldn't append subjects for retirement to file,1")
+                pass
+            try:
+                if len(retire_list_thres)>0:
+                    retired_list = self.retrieve_list(self.config.Nthres_retirement_path)
+                    retired_list.append([time.time(),retire_list_thres])
+                    self.save_list(retired_list,self.config.Nthres_retirement_path)
+            except:
+                print("Couldn't append subjects for retirement to file,2")
+                pass
 #GET RID OF THIS UNRETIREMENT LINE!!! JUST NEEDED FOR TESTING TEMPORARILY
 #        self.workflow.unretire_subjects(np.array(retire_batch).tolist())
 #        for f in range(len(retire_batch)):
@@ -759,7 +823,9 @@ class SWAP(object):
         ST_retirement=time.time()
 #        self.send_panoptes(retire_list_thres,'consensus')
 #        self.send_panoptes(retire_list_Nclass,'classification_count')
+        print('Sending to panoptes')
         self.send_panoptes(retire_batch,'consensus')
+        print('Sent to panoptes')
         st_save2 = time.time()
 #        self.save()
         et_save2 = time.time()
@@ -771,20 +837,20 @@ class SWAP(object):
 #            print('RETIREMENT ERROR 2 HERE')
 #        #Number retired may include double counting as subjects can be retired by both consensus or classification_count, but use this as want total number of subjects sent for retirement.
 #        number_retired = int(len(set(np.array(retire_list_thres)))+len(set(np.array(retire_list_Nclass))))
-#KEEP NEXT LINE IN! SAVES DATABASE EVERY 30MINS:
-        if time.time()-save_timer_start>1800:
+#KEEP NEXT LINE IN! SAVES DATABASE EVERY 30MINS (now 10s, for testing):
+        if time.time()-save_timer_start>300:#1800:
           print('Starting saving')
           self.save()
           save_timer_start = time.time()
           print('Finished saving')
         if keyerror_1_i != 0 or keyerror_2_i !=0:
-            with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'r') as g:
+            with open(self.config.keyerror_list_path,'r') as g: #('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'r') as g:
               keyerror_list=eval(g.read())
             keyerror_list[0]+=keyerror_1_i
             keyerror_list[1]+=keyerror_2_i
-            with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'w') as q:
+            with open(self.config.keyerror_list_path,'w') as q:#('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/KeyError_list.txt', 'w') as q:
               q.write(str(keyerror_list))
-        with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
+        with open(self.config.aws_list_path,'w') as f:#('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
           f.write(str(aws_list))
         print('')
         ED_time = time.time()
@@ -808,7 +874,7 @@ class SWAP(object):
 #      self.send_panoptes(retire_list_Nclass,'classification_count')
       self.send_panoptes(retire_batch,'consensus')
       try:
-        with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
+        with open(self.config.aws_list_path,'w') as f:#('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
           f.write(str(aws_list))
       except Exception as exep:
         print(exep)
@@ -818,8 +884,15 @@ class SWAP(object):
       self.save()
       print('Terminating SWAP instance.')
       exit()
-    except:
-      self.save()
+    except Exception as exep1:
+        print('KEY_ERROR_7 HERE')
+        print(exep1)
+        with open(self.config.keyerror_list_path, 'r') as g:
+            keyerror_list=eval(g.read())
+        keyerror_list[7]+=1
+        with open(self.config.keyerror_list_path, 'w') as h:
+            h.write(str(keyerror_list)) 
+        self.save()
 ###Retirements:
     st=time.time()
     logging.info('Retiring ' + str(len(set(np.array(retire_list_thres+retire_list_Nclass))))+ ' subjects')
@@ -828,7 +901,7 @@ class SWAP(object):
 #    self.send_panoptes(retire_list_Nclass,'classification_count')
     self.send_panoptes(list(set(np.array(retire_list_thres+retire_list_Nclass))),'consensus')
     self.save()
-    with open('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
+    with open(self.config.aws_list_path,'w') as f: #('/Users/hollowayp/Documents/GitHub/kSWAP/kswap/AWS_list.txt', 'w') as f:
       f.write(str(aws_list))
     et=time.time()
     logging.info('retirement time: ' + str(et-st))
@@ -861,6 +934,7 @@ class SWAP(object):
     print('Adding '+ str(HS) + ' hard sims')
 
 #Goes through the csv file, if subject is a gold, updates the user-score accordingly.
+#NOTE (April 2023) I'm not sure there is anything in this bit of code which prevents (repeatedly) updating user scores if they see the same gold subjects repeatedly? This only matters for run_offline though.
   def apply_golds(self, path):
     with open(path, 'r') as csvdump:
       reader = csv.DictReader(csvdump)
@@ -909,7 +983,21 @@ class SWAP(object):
           print('KEY ERROR IN APPLY GOLDS.')
           continue
 
-#Run offline
+###Code to Mass-Unretire subjects from a subject-workflow csv.
+  def unretire_all_subjects_in_csv(self,csv_file):
+    subject_id_set=[]
+    with open(csv_file) as csvfile:
+        reader = csv.DictReader(csvfile)
+        for i,row in enumerate(reader):
+            subject_id_set.append(row['subject_id'])
+    print('Unretiring')
+    self.workflow.unretire_subjects(subject_id_set)
+    print('Unretired')
+    for i in range(len(subject_id_set)):
+        print(subject_id_set[i])
+        print(self.workflow.subject_workflow_status([subject_id_set[i]]).retirement_reason)
+
+#Run offline - NOTE: See April 2023 comment above apply_golds.
   def run_offline(self, gold_csv, classification_csv, hard_sims_csv=None):
     self.get_golds(gold_csv, hard_sims_csv)
     self.apply_golds(classification_csv)
@@ -931,6 +1019,9 @@ class SWAP(object):
     print('Total not ignored: ',total_not_ignored)
 
   def run_caesar(self,gold_csv,hard_sims_csv=None):
+#    print('Unretiring all subjects')
+#    self.unretire_all_subjects_in_csv(gold_csv)
+#    print('Finished unretiring all subjects')
     self.load()
     self.get_golds(gold_csv,hard_sims_csv)
     self.process_classifications_from_caesar('test_config2')
@@ -949,22 +1040,3 @@ class SWAP(object):
 #        print('ERROR HERE: some subjects not retired normally')
 #        print('N_retired = ' + str(N_retired) + ', N_active = ' + str(N_active))
 
-###Code to Mass-Unretire subjects from a subject-workflow csv.
-#    import csv
-#THESE ARE THE SUBJECTS IN THE MINI-BETA TEST TRIALED BEFORE CHRISTMAS. THEY NEED UNRETIRING AND SWAP.DB DELETING TO REFRESH CLASSIFICATIONS.
-#First Beta Test:
-    dud_sample = [72109450,72109451,72109452,72109453,72109454,72109455,72109456,72109457,72109458,72109459,72109460,72109461,72109462,72109463,72109464,72109465,72109466,72109467,72109468,72109469,72109470,72109471,72109472,72109473,72109474,72109475,72109476,72109477,72109478,72109479,72109480,72109481,72109482,72109483,72109484,72109485,72109486,72109487,72109488,72109489,72109490]
-    training_sample = [72109409, 72109410, 72109411, 72109412, 72109413, 72109414, 72109415, 72109416, 72109417, 72109418, 72109419, 72109420, 72109421, 72109422, 72109423, 72109424, 72109425, 72109426, 72109427, 72109428, 72109429, 72109430, 72109431, 72109432, 72109433, 72109434, 72109435, 72109436, 72109437, 72109438, 72109439, 72109440, 72109441, 72109442, 72109443, 72109444, 72109445, 72109446, 72109447, 72109448, 72109449, 72109450, 72109451, 72109452, 72109453, 72109454, 72109455, 72109456, 72109457, 72109458, 72109459, 72109460, 72109461, 72109462, 72109463, 72109464, 72109465, 72109466, 72109467, 72109468, 72109469, 72109470, 72109471, 72109472, 72109473, 72109474, 72109475, 72109476, 72109477, 72109478, 72109479, 72109480, 72109481, 72109482, 72109483, 72109484, 72109485, 72109486, 72109487, 72109488, 72109489, 72109490, 72109491, 72109492, 72109493, 72109494, 72109495, 72109496, 72109497, 72109498, 72109499, 72109500, 72109501, 72109502, 72109503, 72109504, 72109505, 72109506, 72109507, 72109508, 72109509, 72109510]
-#subject_id_set=[71364867,71364863,71364858,71364853,71365254,71365236,71365216,71365187,71365177,71365453,71365446,71365440,71365431,71365424,71365418,71365408,71365396,71365385,71365379,71365370,71365360,71365346,71365337,71365331,71365325,71365313,71365307,71365302,71365292]
-#Jan Beta Test:
-#    subject_id_set=[71700294 ,71700293 ,71700292 ,71700291 ,71700299 ,71700298 ,71700297 ,71700296 ,71700295 ,71700319 ,71700318 ,71700317 ,71700316 ,71700315 ,71700314 ,71700313 ,71700312 ,71700311 ,71700310 ,71700309 ,71700308 ,71700307 ,71700306 ,71700305 ,71700304 ,71700303 ,71700302 ,71700301 ,71700300]
-#    with open('/Users/hollowayp/Downloads/space-warps-des-subjects-4.csv') as csvfile:
-#        reader = csv.DictReader(csvfile)
-#        for i,row in enumerate(reader):
-#            subject_id_set.append(row['subject_id'])
-#    print('Unretiring')
-#    self.workflow.unretire_subjects(subject_id_set)
-#    for i in range(len(dud_sample)):
-#      print(self.workflow.subject_workflow_status([dud_sample[i]]).retirement_reason)
-#    for i in range(len(training_sample)):
-#      print(self.workflow.subject_workflow_status([training_sample[i]]).retirement_reason)
