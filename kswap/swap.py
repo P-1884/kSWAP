@@ -1,5 +1,7 @@
 from collections import Counter
 from datetime import datetime
+import sys
+sys.path.append('caesar_external')
 import caesar_external as ce
 from config import Config
 from tqdm import tqdm
