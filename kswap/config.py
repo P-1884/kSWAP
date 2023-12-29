@@ -20,13 +20,11 @@ class Config(object):
 
 #File Paths: 
     #File-path for list of subjects which have been retired:
-    self.retired_items_path= XXX.txt #This should start with 'Column 1' as its first line.
+    self.retired_items_path= '../kswap/retired_items_list.txt #This should start with 'Column 1' as its first line.
     #File-path for list of subjects which have been retired because they reached the classification number limit:
-    self.Nclass_retirement_path = XXX.txt  #This should start with 'Column 1' as its first line.
+    self.Nclass_retirement_path = '../kswap/Nclass_retirement_list.txt'  #This should start with 'Column 1' as its first line.
     #File-path for list of subjects which have been retired because they reached the lower or upper score thresholds:
-    self.Nthres_retirement_path = XXX.txt #This should start with 'Column 1' as its first line.
-    #File-path to store the classification ID's:
-    self.classification_id_path = XXX.txt #This should start with 'Column 1' as its first line.
+    self.Nthres_retirement_path = '../kswap/Nthres_retirement_list.txt' #This should start with 'Column 1' as its first line.
     #File-path for where the gold-subject csv is stored:
     self.golds_path = XXX.csv
     #If importing classifications from a csv file, this should be the path to that file, otherwise None:

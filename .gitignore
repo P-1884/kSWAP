@@ -131,7 +131,6 @@ dmypy.json
 #sqlite3 databases
 *.db
 
-*.txt
 *.csv
 *.db
 examples/swap_beta_test_db_Sept2023_beta_FINAL_from_csv

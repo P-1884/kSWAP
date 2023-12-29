@@ -11,7 +11,7 @@ A few things need to be configured before this code package will run.
 
 ## Requirements
 The following packages are required (available via pip):
-- panoptes_client,\
+- panoptes_client,
 - boto3\
 Once these packages have been installed correctly you should be able to run python3 run.py (after navigating to the examples folder) without errors. You should then configure the config file, as described below.
 
