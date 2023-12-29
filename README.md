@@ -9,6 +9,12 @@ Included here for completeness, adapted from https://github.com/miclaraia/caesar
 # Setup
 A few things need to be configured before this code package will run. 
 
+## Requirements
+The following packages are required (available via pip):
+- panoptes_client,\
+- boto3\
+Once these packages have been installed correctly you should be able to run python3 run.py (after navigating to the examples folder) without errors. You should then configure the config file, as described below.
+
 ### The Config file:
 This is located at kswap/config.py. The config folder requires details of the Zooniverse project/workflow ID, along with
 selected paths to files SWAP requires/will generate. 
@@ -34,7 +40,8 @@ real-time.
 Located at kSWAP/caesar_external/data/AWS_config.json. This requires the Zooniverse project and workflow ID as well as the AWS url.
 
 ### AWS Queue
-The AWS queue, which retrieves real-time classification data, needs to be configured to run AWS SWAP. Instructions for doing this are [here](https://docs.google.com/document/d/1kFpuq2QxfeXJRy6cIiAQgYiYt2Z2lr_OB5hIKPG246Y/edit?usp=sharing) (Credit: Zooniverse)
+The AWS queue, which retrieves real-time classification data, needs to be configured to run AWS SWAP. Instructions for doing this are [here](https://docs.google.com/document/d/1kFpuq2QxfeXJRy6cIiAQgYiYt2Z2lr_OB5hIKPG246Y/edit?usp=sharing) (Credit: Zooniverse). This will generate two keys, AMAZON_ACCESS_KEY_ID and AMAZON_SECRET_ACCESS_KEY which are used by this package.
+
 ### And Finally
-Once the above has been completed, run SWAP by uncommenting one of the functions in 'main' within examples/run.py.
+Once the above has been completed, run SWAP by uncommenting one of the functions in 'main' within examples/run.py.\
 While I hope this package is bug-free, if you find any please report them as Github Issues.
