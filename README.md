@@ -25,7 +25,7 @@ Located at kSWAP/caesar_external/data/test_config2.json
 This requires the Zooniverse project and workflow ID as well as the AWS url.
 
 ### AWS Queue
-The AWS queue, which retrieves real-time classification data, needs to be configured to run AWS SWAP. Instructions for doing this are here \url{https://docs.google.com/document/d/1kFpuq2QxfeXJRy6cIiAQgYiYt2Z2lr_OB5hIKPG246Y/edit?}usp=sharing (Credit: Zooniverse)
+The AWS queue, which retrieves real-time classification data, needs to be configured to run AWS SWAP. Instructions for doing this are [here](https://docs.google.com/document/d/1kFpuq2QxfeXJRy6cIiAQgYiYt2Z2lr_OB5hIKPG246Y/edit?usp=sharing) (Credit: Zooniverse)
 ### And Finally
 Once the above has been completed, run SWAP by uncommenting one of the functions in 'main' within examples/run.py.
 While I hope this package is bug-free, if you find any please report them as Github Issues.
