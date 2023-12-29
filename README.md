@@ -44,4 +44,4 @@ The AWS queue, which retrieves real-time classification data, needs to be config
 
 ### And Finally
 Once the above has been completed, run SWAP by uncommenting one of the functions in 'main' within examples/run.py.\
-While I hope this package is bug-free, if you find any please report them as Github Issues.
+Please report any bugs as Github Issues.
