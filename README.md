@@ -43,5 +43,6 @@ Located at kSWAP/caesar_external/data/AWS_config.json. This requires the Zoonive
 The AWS queue, which retrieves real-time classification data, needs to be configured to run AWS SWAP. Instructions for doing this are [here](https://docs.google.com/document/d/1kFpuq2QxfeXJRy6cIiAQgYiYt2Z2lr_OB5hIKPG246Y/edit?usp=sharing) (Credit: Zooniverse). This will generate two keys, AMAZON_ACCESS_KEY_ID and AMAZON_SECRET_ACCESS_KEY which are used by this package.
 
 ### And Finally
-Once the above has been completed, run SWAP by uncommenting one of the functions in 'main' within examples/run.py.\
+Once the above has been completed, run SWAP by uncommenting one of the functions in 'main' within examples/run.py. There is a 'quick_check' 
+file which gives a quick summary of classifications so far (useful for when running AWS SWAP to check progress).\
 Please report any bugs as Github Issues.
