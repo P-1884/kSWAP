@@ -1,33 +1,32 @@
+from pandas import read_sql_query, read_sql_table
 import matplotlib.pyplot as pl
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
+import statistics
 import datetime
 import sqlite3
 import sys
-from pandas import read_sql_query, read_sql_table
-from tqdm import tqdm
-
-sys.path.append('/mnt/zfsusers/hollowayp/kSWAP/kswap/')
-
-pd.set_option('display.max_columns', 500)
-pd.set_option('display.width', 1500)
-
-#file_path = './data/'+sys.argv[1]+'.db'
+sys.path.append('../kswap/')
 from config import Config
+
+def set_max_pd(rows=None,columns=None):
+    pd.set_option('display.max_columns', columns)
+    pd.set_option('display.max_rows', rows)
+
+set_max_pd(rows=150,columns=None)
+
 file_path = Config().examples_path+'/data/'+Config().db_name
-#file_path = '/mnt/zfsusers/hollowayp/kSWAP/examples/data/swap_beta_test_db_Sept2023_caesar_testing-Copy1.db'
 print('filepath',file_path)
-print(sys.argv)
+
 def thresholds_setting():
-    from config import Config as config_0
     sys.path.insert(0, '../kswap')
-    p_real = config_0().thresholds[1]
-    p_bogus = config_0().thresholds[0]
+    p_real = Config().thresholds[1]
+    p_bogus = Config().thresholds[0]
     return [p_real,p_bogus]
 
 def prior_setting():
-    from config import Config as config_0
-    return config_0().p0
+    return Config().p0
 
 def read_sqlite(dbfile):
     with sqlite3.connect(dbfile) as dbcon:
@@ -35,38 +34,47 @@ def read_sqlite(dbfile):
       out = {tbl : read_sql_query(f"SELECT * from {tbl}", dbcon) for tbl in tables}
     return out
 
-print('USERS')
-print('User db')
-user_db =pd.DataFrame.from_dict(read_sqlite(file_path)['users']) 
-user_db.to_csv(Config().examples_path+'/data/DES_Beta_Sept_2023_users.csv')
-N_subj_seen_by_user = [len(eval(user_db['user_subject_history'][i])) for i in range(len(user_db))]
-user_db['N_subj_seen'] = N_subj_seen_by_user
-print(user_db[['user_id', 'user_score', 'confusion_matrix','N_subj_seen']])
-
-print('User history')
-#print(pd.DataFrame.from_dict(read_sqlite(file_path)['users'])['history'][0])
 print('SUBJECTS')
 subj_db = pd.DataFrame.from_dict(read_sqlite(file_path)['subjects'])
 subj_db['score']= subj_db['score'].astype('float64')
-print('Sum test not retired:',len(subj_db[(subj_db['retired']==0)&(subj_db['gold_label']==-1)]))
-print('Sum test so far',len(set(subj_db[subj_db['gold_label']==-1]['subject_id'])))
-subj_db.to_csv(Config().examples_path+'/data/DES_Beta_Sept_2023_subjects.csv')
+print(f'Have {len(subj_db[subj_db["gold_label"]==1])} sims and {len(subj_db[subj_db["gold_label"]==0])} in the training set')
+print(f"{len(set(subj_db[subj_db['gold_label']==-1]['subject_id']))} test subjects have been classified so far, of which"+\
+      f"{len(subj_db[(subj_db['retired']==0)&(subj_db['gold_label']==-1)])} have not yet been retired")
 
-print('Test subjects')
-print(subj_db[subj_db['gold_label']==-1].sort_values(by='subject_id'))
 print('Training subjects')
 print(subj_db[subj_db['gold_label']!=-1].sort_values(by='subject_id'))
-'''
-print('Classified Subjects:')
-classified_subj_indx = np.where(subj_db['seen']>0)[0]
-for indx in classified_subj_indx:
-    print(subj_db.loc[indx]['subject_id'],subj_db.loc[indx]['history'][1:])
 
-print('THRESHOLDS')
-print(pd.DataFrame.from_dict(read_sqlite(file_path)['thresholds']))
-print('CONFIG')
-print(pd.DataFrame.from_dict(read_sqlite(file_path)['config']))
-print('Key error summary:')'''
+print('Test subjects')
+Test_subj = subj_db[subj_db['gold_label']==-1].copy().reset_index(drop=True) 
+print(Test_subj)
+
+print('Retired Subjects')
+print(subj_db[subj_db['retired']==1].sort_values(by='subject_id'))
+
+print('USERS')
+user_db =pd.DataFrame.from_dict(read_sqlite(file_path)['users']) 
+N_subj_seen_by_user = [len(eval(user_db['user_subject_history'][i])) for i in range(len(user_db))]
+user_db['N_subj_seen'] = N_subj_seen_by_user
+print('User db')
+print(user_db[['user_id', 'user_score', 'confusion_matrix','N_subj_seen']].sort_values(by='N_subj_seen'))
+print("User_id's with >1000 classifications:",list(user_db[user_db['N_subj_seen']>=1000]['user_id']))
+
+#Histogram of N_seen
+hist_dict_nseen = {'fill':False,'density':False,'bins':np.arange(-0.5,np.max(subj_db['seen'])+1.5,1)}
+fig,ax = pl.subplots(1,3,figsize=(15,5))
+ax[0].hist(subj_db[subj_db['gold_label']==-1]['seen'],**hist_dict_nseen,edgecolor='k')
+ax[0].hist(subj_db[subj_db['gold_label']==0]['seen'],**hist_dict_nseen,edgecolor='red')
+ax[0].hist(subj_db[subj_db['gold_label']==1]['seen'],**hist_dict_nseen,edgecolor='blue')
+ax[0].set_xlabel('N. Classifications')
+ax[0].set_ylabel('N. Subjects')
+ax[0].legend(['Test','Training (Non-lens)','Training (Lens)'])
+
+#Histogram of N_seen by user
+ax[1].hist(user_db['N_subj_seen'],bins=np.arange(-0.5,np.max(user_db['N_subj_seen'])+1.5,1),edgecolor='k',fill=False)
+ax[1].set_xlabel('N. Classifications')
+ax[1].set_ylabel('N. Users')
+
+print('Key error summary:')
 key_error_summary_dict = {'0':'Error in caesar_receive',\
                           '1':'Error in caesar_receive',\
                           '2':"Error when looking for 'already seen' flag in Caesar Extractor",\
@@ -81,32 +89,31 @@ for k_i in key_error_summary_dict.keys():
     print(k_i,key_error_summary_dict[k_i])
 for line in open(Config().keyerror_list_path,'r'):
     key_error_list = eval(line)
-    print({elem:key_error_list[elem] for elem in range(len(key_error_list))})
+    print('Error Occurrences: ',{elem:key_error_list[elem] for elem in range(len(key_error_list))})
+
 print(f'Total number of test-subject classifications: {np.sum(subj_db[subj_db["gold_label"]==-1]["seen"])}')
 print(f'Total number of unique test-subjects classified: {len(set((subj_db[subj_db["gold_label"]==-1]["subject_id"])))}')
 print(f'Total number of training-subject classifications: {np.sum(subj_db[subj_db["gold_label"]!=-1]["seen"])}')
-print(f'Max N-seen for a given subject: {np.max(subj_db["seen"])}')
-print(f'Number of subjects seen >=4 times: {np.sum(subj_db["seen"]>=4)}')
-print('Subjects seen >= 4 times')
-print(subj_db[subj_db["seen"]>=4])
-print(f'Number retired: {np.sum(subj_db["retired"])}')
-known_subj_id = [91831901, 91831911, 91831916, 91831928, 91831943, 91831945, 91831956, 91831965, 91831970, 91831982, 91831993, 91832039, 91832118, 91832123, 91832163, 91832189, 91832209, 91832222, 91832261, 91832278, 91832315, 91832316, 91832331, 91832337, 91832344, 91832354, 91832394]
-print(subj_db[(subj_db['subject_id'].isin(known_subj_id))&(subj_db['score']>0.9)])
-'''
-nohup python3 run.py > run_swap_log.log 2>&1 &
-echo $! > process_id_number.txt
-top -pid `cat process_id_number.txt`
-###kill -9 `cat process_id_number.txt`
-'''
+print(f'Max N. classifications for a given subject: {np.max(subj_db["seen"])}')
+print(f'Number of subjects seen >=5 times: {np.sum(subj_db["seen"]>=5)}')
+print(f'Number of subjects retired: {np.sum(subj_db["retired"])}')
+print(f'Mean number of classifications per test subject: {np.round(np.mean(subj_db[subj_db["gold_label"]==-1]["seen"]),2)}')
+print(f'Median number of classifications per test subject: {np.round(np.median(subj_db[subj_db["gold_label"]==-1]["seen"]),2)}')
+print(f'Modal number of classifications per test subject: {np.round(statistics.mode(subj_db[subj_db["gold_label"]==-1]["seen"]),2)}')
 
-#Finding known lenses from subject export:
-'''
-db = pd.read_csv('/Users/hollowayp/Downloads/space-warps-des-vision-transformer-subjects (5).csv')
-db=db[db['workflow_id']==25011].reset_index()
-known_len_subj_id = []
-for subj_i in range(len(db)):
-  meta_i = eval(db['metadata'][subj_i])
-  if meta_i['#Type']=='SUB' and meta_i["#KNOWN_LENS_REF"]!="":
-    print(meta_i["#KNOWN_LENS_REF"])
-    known_len_subj_id.append(db['subject_id'][subj_i])
-'''
+#Histogram of subject scores:
+dS = 0.5
+hist_dict = {'bins':np.arange(-10,dS,dS),'density':False,'fill':False}
+ax[2].hist(np.log10(subj_db[subj_db['gold_label']==-1]['score']),**hist_dict,edgecolor='k')
+ax[2].hist(np.log10(subj_db[subj_db['gold_label']==0]['score']),**hist_dict,edgecolor='red')
+ax[2].hist(np.log10(subj_db[subj_db['gold_label']==1]['score']),**hist_dict,edgecolor='blue')
+ylim_hist = pl.ylim()
+ax[2].plot(np.log10(np.array([5e-4,5e-4])),[ylim_hist[0],ylim_hist[1]],'--',c='grey')
+ax[2].plot([-5,-5],[ylim_hist[0],ylim_hist[1]],'--',c='red')
+ax[2].plot([0,0],[ylim_hist[0],ylim_hist[1]],'--',c='blue')
+ax[2].set_ylim(ylim_hist)
+ax[2].legend(['Test','Training (Non-lens)','Training (Lens)'])
+ax[2].set_xlabel('Log(Score)')
+ax[2].set_ylabel('Counts')
+pl.tight_layout()
+pl.show()
