@@ -166,11 +166,11 @@ class Subject(object):
     for details (https://arxiv.org/pdf/1504.06148.pdf).
     - Increases seen by 1
     - Updates the subject history.
-  Defining u_L and u_NL as user scores for Lens/Non-lens classification):
-  If labelled NL:
-  New score = score*(1-u_L)/[score*(1-u_L)+u_NL*(1-score)]
-  If labelled L:
-  New score = score*u_L/[score*u_L+(1-u_NL)*(1-score)]
+    Defining u_L and u_NL as user scores for Lens/Non-lens classification):
+    If labelled NL:
+    New score = score*(1-u_L)/[score*(1-u_L)+u_NL*(1-score)]
+    If labelled L:
+    New score = score*u_L/[score*u_L+(1-u_NL)*(1-score)]
     '''
     if label == '0':
       self.score=float(self.score)
@@ -584,7 +584,6 @@ class SWAP(object):
               q_all+=1
               haveItems = True
               id = int(item['id'])
-              already_seen_i=item['already_seen']
               try:
                 user_id = int(item['user'])
               except ValueError:
@@ -834,4 +833,4 @@ class SWAP(object):
   def run_caesar(self,gold_csv,hard_sims_csv=None):
     self.load()
     self.get_golds(gold_csv,hard_sims_csv)
-    self.process_classifications_from_caesar('test_config2')
+    self.process_classifications_from_caesar('AWS_config')
