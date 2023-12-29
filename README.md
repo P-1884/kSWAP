@@ -2,9 +2,9 @@
 # Overview
 This package derives from two existing packages and implements AWS SWAP: real-time processing of binary classifications made on the Zooniverse platform. The original packages are:
 ### kSWAP
-Adapted from https://github.com/zooniverse/kSWAP
+Adapted from https://github.com/zooniverse/kSWAP. 
 ### Caesar External
-Included here for completeness, adapted from https://github.com/miclaraia/caesar_external
+Included here for completeness, adapted from https://github.com/miclaraia/caesar_external. The key functions used here are found within caesar_external/extractor.py.
 
 # Setup
 A few things need to be configured before this code package will run. 
