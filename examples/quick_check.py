@@ -57,7 +57,7 @@ N_subj_seen_by_user = [len(eval(user_db['user_subject_history'][i])) for i in ra
 user_db['N_subj_seen'] = N_subj_seen_by_user
 print('User db')
 print(user_db[['user_id', 'user_score', 'confusion_matrix','N_subj_seen']].sort_values(by='N_subj_seen'))
-print("User_id's with >1000 classifications:",list(user_db[user_db['N_subj_seen']>=1000]['user_id']))
+print("User_id's with >1000 classifications:",list(user_db[user_db['N_subj_seen']>=1000]['user_id']),'\n')
 
 #Histogram of N_seen
 hist_dict_nseen = {'fill':False,'density':False,'bins':np.arange(-0.5,np.max(subj_db['seen'])+1.5,1)}
@@ -89,7 +89,7 @@ for k_i in key_error_summary_dict.keys():
     print(k_i,key_error_summary_dict[k_i])
 for line in open(Config().keyerror_list_path,'r'):
     key_error_list = eval(line)
-    print('Error Occurrences: ',{elem:key_error_list[elem] for elem in range(len(key_error_list))})
+    print('Error Occurrences: ',{elem:key_error_list[elem] for elem in range(len(key_error_list))},'\n')
 
 print(f'Total number of test-subject classifications: {np.sum(subj_db[subj_db["gold_label"]==-1]["seen"])}')
 print(f'Total number of unique test-subjects classified: {len(set((subj_db[subj_db["gold_label"]==-1]["subject_id"])))}')
