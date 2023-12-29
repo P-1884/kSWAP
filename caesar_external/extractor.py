@@ -75,6 +75,34 @@ def process_and_delete_from_sqs(message):
             'classification_time':c['data']['classification']['created_at']}
       return cl
 
+class Extractor:
+
+    @classmethod
+    def last_id(cls, next_id=None):
+        if next_id is None:
+          return Config.instance().last_id
+        Config.instance().last_id = next_id
+
+    @classmethod
+    def next(cls):
+        cl = None
+        for cl in cls.get_classifications(cls.last_id()):
+            yield cl
+        if cl:
+            cls.last_id(cl['id'])
+
+    @classmethod
+    def get_classifications(cls, last_id=None):
+        logger.debug('Getting classifications\n{}\n{}'.format(
+            last_id, Config.instance().sqs_queue))
+        if Config.instance().sqs_queue is not None:
+            return SQSExtractor.get_classifications(Config.instance().sqs_queue)
+        return StandardExtractor.get_classifications(last_id)
+
+    @classmethod
+    def next_fast(cls):
+      return SQSExtractor.get_classifications_fast(Config.instance().sqs_queue)
+
 class SQSExtractor(Extractor):
 
     @classmethod

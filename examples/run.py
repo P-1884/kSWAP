@@ -1,5 +1,6 @@
 import sys
-sys.path.insert(0, '../kswap')
+sys.path.append('../kswap/')
+sys.path.append('../')
 from swap import SWAP
 
 '''
