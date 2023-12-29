@@ -5,7 +5,7 @@ import code
 import os
 from caesar_external.ui import ui
 from caesar_external.data import Config
-from caesar_external.extractor import Extractor
+#from caesar_external.extractor import Extractor
 from caesar_external.reducer import Reducer
 
 
