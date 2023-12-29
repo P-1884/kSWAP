@@ -31,8 +31,8 @@ class Config(object):
     self.classification_path = None
     #File-path to the csv file for identifying the hard sims (if any), otherwise None:
     self.hard_sims_path = None
-    self.kswap_path = '/mnt/zfsusers/hollowayp/kSWAP/kswap/'
-    self.examples_path = '/mnt/zfsusers/hollowayp/kSWAP/examples'
+    self.kswap_path = '../kswap/'
+    self.examples_path = '../examples'
 
 #When plotting trajectories, there is an additional path (on line 2 of kswap_plots.py) which needs to be updated to the location of the config file (found at '...kSWAP/kswap/config.py')
     
