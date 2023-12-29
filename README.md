@@ -18,7 +18,7 @@ real-time.
 2) List of all subjects which have been retired (located at 'retired_items_path').
 3) List of IDs and retirement times of subjects which have been retired due to reaching the upper classification-number limit (located at 'Nclass_retirement_path').
 4) List of IDs and retirement times of subjects which have been retired due to reaching the upper or lower score threshold (located at 'Nthres_retirement_path').
-5) Bug Report (located at 'keyerror_list_path'): This is a list of bug occurrences to help with debugging (primarily for AWS SWAP). The numbers are updated (>0) each time abnormal behaviour is detected. The elements of the list correspond to the following bugs:
+5) Bug Report (located at 'keyerror_list_path'): This is a list of bug occurrences to help with debugging (primarily for AWS SWAP). The numbers are updated (>0) each time abnormal behaviour is detected. The elements of the list correspond to the following bugs:\
 [0]: Error in caesar_receive,\
 [1]: Error in caesar_receive,\
 [2]: Currently Redundant,\
