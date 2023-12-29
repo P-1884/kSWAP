@@ -1,7 +1,6 @@
 import sys
 sys.path.insert(0, '../kswap')
 from swap import SWAP
-from kswap import kSWAP
 
 '''
 NOTE:  There is nothing yet preventing user scores being updated multiple times if a given user 
@@ -44,7 +43,8 @@ def test_caesar():
   swap = swap.load()
 
 def main():
-  #To run swap, uncomment the required version of swap here:
+  print('Hello World')
+#To run swap, uncomment the required version of swap here:
 #  test_offline() #Offline swap from csv
 #  test_online() #Online swap from csv
 #  test_caesar() #AWS Swap
