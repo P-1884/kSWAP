@@ -43,7 +43,6 @@ sqs = boto3.client('sqs',region_name='us-east-1',
                    aws_access_key_id=os.environ["AMAZON_ACCESS_KEY_ID"],
                    aws_secret_access_key=os.environ['AMAZON_SECRET_ACCESS_KEY'])
 
-        for cl in cls.get_classifications(cls.last_id()):
 def process_and_delete_from_sqs(message):
       messageBody = message['Body']
       messageBodyMd5 = hashlib.md5(messageBody.encode()).hexdigest()
