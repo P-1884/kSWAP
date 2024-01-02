@@ -44,5 +44,5 @@ The AWS queue, which retrieves real-time classification data, needs to be config
 
 ### And Finally
 Once the above has been completed, run SWAP by uncommenting one of the functions in 'main' within examples/run.py. There is a 'quick_check' 
-file which gives a quick summary of classifications so far (useful for when running AWS SWAP to check progress).\
+file which gives a quick summary of classifications so far (useful for when running AWS SWAP to check progress) and a 'SWAP_plots' file to plot trajectory plots of the classifications.\
 Please report any bugs as Github Issues.
