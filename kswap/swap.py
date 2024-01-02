@@ -775,6 +775,7 @@ class SWAP(object):
     NOTE:  There is nothing yet preventing user scores being updated multiple times if a given user 
     saw the same gold subjects more than once in test_offline or test_online. This is resolved for AWS swap.
     '''
+    n_gold_classifications=0
     with open(path, 'r') as csvdump:
       reader = csv.DictReader(csvdump)
       for row in reader:
@@ -805,7 +806,7 @@ class SWAP(object):
                                         gamma   = self.config.gamma,
                                         user_default = self.config.user_default)
         try:
-          gold_label = self.subjects[cl.subject_id].gold_label
+          gold_label = int(self.subjects[cl.subject_id].gold_label)
           '''
           User skill is updated if:
           1) The subject is an easy training subject or
@@ -817,9 +818,10 @@ class SWAP(object):
             self.users[cl.user_id].update_user_score(gold_label, cl.label)
           elif gold_label==1 and self.subjects[cl.subject_id].hard_sim_label==1 and cl.label == gold_label:
             self.users[cl.user_id].update_user_score(gold_label, cl.label)
+          if gold_label==0 or gold_label==1: n_gold_classifications+=1
         except KeyError as e:
-          print('KEY ERROR IN APPLY GOLDS.')
           continue
+    print(f'Have processed {n_gold_classifications} classifications of training subjects in total.')
 
   def run_offline(self, gold_csv, classification_csv, hard_sims_csv=None):
     self.get_golds(gold_csv, hard_sims_csv)
