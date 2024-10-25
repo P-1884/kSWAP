@@ -131,3 +131,20 @@ dmypy.json
 #sqlite3 databases
 *.db
 examples/data/tuples_data
+
+examples/*.csv
+examples/*.txt
+examples/*.png
+examples/*.jpg
+examples/*.pdf
+examples/.*
+examples/data/.*
+examples/data/*.csv
+examples/data/*.txt
+examples/Trajectory_Plots/*.png
+examples/Trajectory_Plots/*.pdf
+examples/cmd_outputs/*.out
+kswap/*.txt
+*.sh
+*.out
+*.pdf
