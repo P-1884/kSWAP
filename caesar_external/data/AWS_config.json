@@ -1,0 +1,1 @@
+{"name": "AWS_config", "project": XXX, "workflow": XXX, "last_id": -999, "caesar_name": "ext", "sqs_queue": "AWS_URL_HERE", "staging_mode": false, "auth_mode": "api_key", "client_id": null, "client_secret": null}
