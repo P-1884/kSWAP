@@ -19,6 +19,8 @@ import time
 import sys
 import os
 logger = logging.getLogger(__name__)
+with open('../caesar_external/data/AWS_config.json') as f:
+   AWS_config_data = json.load(f)
 
 def retrieve_list(list_path):
     try:
@@ -47,7 +49,7 @@ def process_and_delete_from_sqs(message):
       messageBody = message['Body']
       messageBodyMd5 = hashlib.md5(messageBody.encode()).hexdigest()
       if messageBodyMd5 == message['MD5OfBody']:
-        sqs.delete_message(QueueUrl="INSERT_AWS_QUEUE_URL_HERE",
+        sqs.delete_message(QueueUrl=AWS_config_data['sqs_queue'],
                            ReceiptHandle=message['ReceiptHandle'])
       c = json.loads(messageBody)
       try:
@@ -126,7 +128,8 @@ class SQSExtractor(Extractor):
                              'created_at':rm_i['data']['classification']['created_at'],
                              'updated_at':rm_i['data']['classification']['updated_at'],
                              'selected_at':rm_i['data']['classification']['metadata']['subject_selection_state']['selected_at']}
-                    r_db=r_db.append(rm_ii,ignore_index=True)
+                    # r_db=r_db.append(rm_ii,ignore_index=True)
+                    r_db = pd.concat([r_db,DF(rm_ii,index=[0])]).reset_index(drop=True)
                 else:
                     print('Something not working')
                     print(messageBodyMd5_0)
@@ -144,7 +147,8 @@ class SQSExtractor(Extractor):
                          'Subj_id':str(message_i['subject']),
                          'User_id':str(message_i['user']),
                          'created_at':str(message_i['classification_time'])}
-                r_db=r_db.append(rm_ii,ignore_index=True)
+                # r_db=r_db.append(rm_ii,ignore_index=True)
+                r_db = pd.concat([r_db,DF(rm_ii,index=[0])]).reset_index(drop=True)
             print('Processed classifications, having removed duplicates:')
             print(r_db)
         except Exception as ex_proc_messages:
