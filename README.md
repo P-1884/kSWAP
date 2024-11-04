@@ -32,7 +32,7 @@ real-time.
 [4]: Error in sending subjects to panoptes for retirement,\
 [5]: Error when trying to delete messages from SQS queue in Caesar Extractor,\
 [6]: Error when saving retired list - retired_list path name may not be set?,\
-[7]: Catch-all exception - could be anywhere!,\
+[7]: Catch-all exception,\
 [8]: User sees the same test subject again,\
 [9]: Currently Redundant
 
